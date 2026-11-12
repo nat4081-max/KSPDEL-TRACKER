@@ -1,0 +1,2930 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>KSP Delivery Live Tracker — ระบบติดตามสถานะการจัดส่งสินค้า (Kasetphand Group)</title>
+  <!-- Google Fonts: Prompt -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Leaflet CSS & JS for Real-time Maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- QRCode.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- PDF.js for client-side PDF fallback parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <style>
+    * {
+      font-family: 'Prompt', sans-serif;
+    }
+    body {
+      background-color: #f4f6f9;
+      color: #1e293b;
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+    #liveMap {
+      height: 430px;
+      width: 100%;
+      border-radius: 16px;
+      z-index: 10;
+    }
+    @media (max-width: 768px) {
+      #liveMap {
+        height: 310px;
+      }
+    }
+    /* Pulse animation for live truck & status */
+    @keyframes pulse-ring {
+      0% { transform: scale(0.85); opacity: 0.9; }
+      70% { transform: scale(1.9); opacity: 0; }
+      100% { transform: scale(1.9); opacity: 0; }
+    }
+    .live-pulse::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 9999px;
+      background-color: #ef4444;
+      animation: pulse-ring 1.8s infinite;
+      z-index: -1;
+    }
+    .shopee-gradient {
+      background: linear-gradient(135deg, #ee4d2d 0%, #ff7337 100%);
+    }
+    .lineman-gradient {
+      background: linear-gradient(135deg, #00b14f 0%, #059669 100%);
+    }
+    .ksp-header-gradient {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+    }
+  </style>
+<style data-link-removed-style>a[data-link-removed],a[href*="zPythonSafez"]:not([onclick]){pointer-events:none!important;cursor:default!important;opacity:.6}</style></head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="ksp-header-gradient text-white shadow-lg sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center shadow-md">
+          <i data-lucide="truck" class="w-6 h-6 text-white"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-base sm:text-lg tracking-tight">KSP Delivery Live Tracker</h1>
+            <span class="text-[11px] bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 px-2 py-0.5 rounded-full font-medium">GitHub & Cloud Free</span>
+          </div>
+          <p class="text-xs text-slate-300 hidden sm:block">ระบบรายงานสถานะขนส่งและหลักฐานการส่งสินค้า (Kasetphand Group - Site: KSPWN)</p>
+        </div>
+      </div>
+
+      <!-- Mobile Link / QR Button & Sync Status -->
+      <div class="flex items-center gap-2 flex-wrap">
+        <div id="syncBadge" class="flex items-center gap-1.5 bg-white/10 px-2.5 py-1.5 rounded-lg text-xs">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+          <span id="syncStatusText" class="text-emerald-200 font-medium">Cloud 24 ชม. (ซิงค์อัตโนมัติ)</span>
+        </div>
+
+        <button onclick="openCloudConfigModal()" class="bg-indigo-500 hover:bg-indigo-400 text-white font-semibold text-xs sm:text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition">
+          <i data-lucide="cloud-cog" class="w-4 h-4"></i>
+          <span>ตั้งค่า GitHub / Cloud ฟรี</span>
+        </button>
+
+        <button onclick="openMobileQrModal()" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs sm:text-sm px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow transition">
+          <i data-lucide="qr-code" class="w-4 h-4"></i>
+          <span>QR มือถือคนขับ / ลูกค้า</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- MAIN MODE TABS -->
+    <div id="mainTabBar" class="bg-slate-900/70 border-t border-white/10">
+      <div class="max-w-7xl mx-auto px-2 sm:px-6 flex overflow-x-auto no-scrollbar">
+        <button onclick="switchTab('track')" id="tabBtn-track" class="tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-semibold border-b-2 border-orange-500 text-orange-400 whitespace-nowrap transition">
+          <i data-lucide="map-pin" class="w-4 h-4"></i>
+          <span>1. ติดตามสถานะสด (แบบ Shopee/LineMan)</span>
+        </button>
+        <button onclick="switchTab('driver')" id="tabBtn-driver" class="tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-slate-300 hover:text-white whitespace-nowrap transition">
+          <i data-lucide="smartphone" class="w-4 h-4"></i>
+          <span>2. หน้าจอมือถือคนขับ (กดส่งสถานะ/ถ่ายรูป)</span>
+        </button>
+        <button onclick="switchTab('upload')" id="tabBtn-upload" class="tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-slate-300 hover:text-white whitespace-nowrap transition">
+          <i data-lucide="file-up" class="w-4 h-4"></i>
+          <span>3. อัปโหลดใบงาน (PDF / รูปภาพ)</span>
+        </button>
+        <button onclick="switchTab('history')" id="tabBtn-history" class="tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-slate-300 hover:text-white whitespace-nowrap transition">
+          <i data-lucide="clipboard-check" class="w-4 h-4"></i>
+          <span>4. ประวัติการส่ง & รูปถ่าย (Export Excel)</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTENT CONTAINER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-5">
+
+    <!-- =================================================================== -->
+    <!-- TAB 1: LIVE TRACKING VIEW (SHOPEE / LINEMAN STYLE)                  -->
+    <!-- =================================================================== -->
+    <section id="view-track" class="space-y-5">
+
+      <!-- Search & Route Selector Bar -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+          <div class="md:col-span-5">
+            <label class="block text-xs font-semibold text-slate-500 mb-1">เลือกสายรถที่กำลังวิ่งงาน (Route No / ทะเบียนรถ / คนขับ)</label>
+            <select id="trackRouteSelect" onchange="onSelectRoute(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-800 focus:ring-2 focus:ring-orange-500 focus:outline-none"></select>
+          </div>
+          <div class="md:col-span-5">
+            <label class="block text-xs font-semibold text-slate-500 mb-1">ค้นหาด่วน (เลข Order เช่น CO26-05495/1, ชื่อลูกค้า, ทะเบียนรถ)</label>
+            <div class="relative">
+              <input id="quickSearchInput" type="text" oninput="handleQuickSearch(this.value)" placeholder="พิมพ์เลข Order, ทะเบียนรถ 67-0291, หรือชื่อลูกค้า..." class="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3.5 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 focus:outline-none" />
+              <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-3"></i>
+            </div>
+          </div>
+          <div class="md:col-span-2 flex flex-col justify-end h-full pt-4 md:pt-5">
+            <button onclick="openReportImageModal()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 border border-slate-200 transition">
+              <i data-lucide="file-text" class="w-4 h-4 text-slate-600"></i>
+              <span>ดูใบงานต้นฉบับ</span>
+            </button>
+          </div>
+        </div>
+        <div id="quickSearchResults" class="hidden mt-3 pt-3 border-t border-slate-100 text-xs"></div>
+      </div>
+
+      <!-- Shopee-Style Status Banner -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="shopee-gradient text-white p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-center gap-3.5">
+            <div class="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center">
+              <i data-lucide="package-check" class="w-7 h-7 text-white"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span id="bannerStatusBadge" class="bg-white text-orange-600 text-xs font-bold px-2.5 py-0.5 rounded-full uppercase">กำลังเดินทางจัดส่ง</span>
+                <span id="bannerRouteNo" class="font-bold text-lg sm:text-xl">สายรถ RN2603054</span>
+              </div>
+              <p id="bannerSubText" class="text-xs sm:text-sm text-orange-100 mt-0.5">ทะเบียนรถ: 67-0291 | คนขับ: พนม แนมขุนทด | วันที่: 09/11/2026</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <button onclick="toggleSimulateGps()" id="simGpsBtn" class="bg-white/20 hover:bg-white/30 text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5 backdrop-blur transition">
+              <i data-lucide="navigation" class="w-4 h-4"></i>
+              <span id="simGpsBtnText">จำลองรถวิ่ง GPS บนแผนที่</span>
+            </button>
+            <button onclick="switchTab('driver')" class="bg-white text-orange-600 hover:bg-orange-50 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition">
+              <i data-lucide="camera" class="w-4 h-4"></i>
+              <span>ไปหน้าคนขับ (กดส่งรูป)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Stepper Progress Bar -->
+        <div class="p-4 sm:p-6 bg-orange-50/40 border-b border-slate-100">
+          <div id="stepperContainer" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+        </div>
+
+        <!-- Map + Live Stop List Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-0">
+          <!-- Left: Real-time GPS Map -->
+          <div class="lg:col-span-7 p-4 sm:p-5 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <div class="flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                  <h3 class="font-bold text-slate-800 text-sm sm:text-base">แผนที่ติดตามตำแหน่งรถขนส่งสด (Live GPS Map)</h3>
+                </div>
+                <div class="flex items-center gap-2 text-xs text-slate-500">
+                  <span id="lastGpsTimeLabel">อัปเดตล่าสุด: -</span>
+                  <button onclick="fitMapBounds()" class="text-blue-600 hover:underline font-medium flex items-center gap-1">
+                    <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i> ดูเต็มสายรถ
+                  </button>
+                </div>
+              </div>
+
+              <!-- Map Container -->
+              <div id="liveMap" class="border border-slate-200 shadow-inner"></div>
+            </div>
+
+            <!-- Map Legend -->
+            <div class="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+              <div class="flex flex-wrap items-center gap-3">
+                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-orange-500 inline-block"></span> รถขนส่งปัจจุบัน</span>
+                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-blue-600 inline-block"></span> กำลังไปส่ง / ถึงร้าน</span>
+                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-emerald-600 inline-block"></span> ส่งสำเร็จแล้ว</span>
+                <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-slate-400 inline-block"></span> รอจัดส่ง</span>
+              </div>
+              <div id="currentCoordsBadge" class="font-mono text-[11px] bg-slate-100 px-2.5 py-1 rounded-md text-slate-700">GPS: 14.2450, 100.0850</div>
+            </div>
+          </div>
+
+          <!-- Right: Shopee-Style Vertical Timeline -->
+          <div class="lg:col-span-5 p-4 sm:p-5 flex flex-col max-h-[540px]">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-bold text-slate-800 text-sm sm:text-base flex items-center gap-2">
+                <i data-lucide="clock" class="w-4 h-4 text-orange-500"></i>
+                <span>ไทม์ไลน์สถานะการจัดส่ง (Live Timeline)</span>
+              </h3>
+              <span id="stopProgressCount" class="text-xs font-bold bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full">0 / 3 จุดส่ง</span>
+            </div>
+
+            <div id="timelineList" class="flex-1 overflow-y-auto pr-1 space-y-4"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detailed Delivery Stops & Items Breakdown (From Z_Delivery Details Report) -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-6">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div>
+            <h3 class="font-bold text-base sm:text-lg text-slate-800 flex items-center gap-2">
+              <i data-lucide="list-checks" class="w-5 h-5 text-blue-600"></i>
+              <span>รายละเอียดจุดส่งสินค้า & รายการตามใบงาน (Z_Delivery Details Report)</span>
+            </h3>
+            <p class="text-xs text-slate-500">แสดงสถานะรายร้าน รายการสินค้า จำนวนที่ต้องส่ง และรูปถ่ายหลักฐานเมื่อถึงมือลูกค้า</p>
+          </div>
+        </div>
+
+        <div id="trackStopsGrid" class="space-y-4"></div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 2: DRIVER MOBILE APP VIEW (ZERO SETUP FOR ANY PHONE)            -->
+    <!-- =================================================================== -->
+    <section id="view-driver" class="hidden max-w-xl mx-auto space-y-4">
+      <!-- Driver App Header Card -->
+      <div class="lineman-gradient text-white rounded-2xl p-4 shadow-md">
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <div class="flex items-center gap-2.5">
+            <div class="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+              <i data-lucide="navigation-2" class="w-6 h-6 text-white"></i>
+            </div>
+            <div>
+              <span class="text-[11px] bg-black/20 px-2 py-0.5 rounded-full">โหมดคนขับรถ (ไม่ต้องตั้งค่า)</span>
+              <h2 class="font-bold text-base sm:text-lg">รายงานสถานะ & ถ่ายรูปส่งของ</h2>
+            </div>
+          </div>
+          <button onclick="openMobileQrModal()" class="bg-white/20 hover:bg-white/30 px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1">
+            <i data-lucide="share-2" class="w-3.5 h-3.5"></i> แชร์ลิงก์
+          </button>
+        </div>
+
+        <!-- Route Selector for Driver -->
+        <div class="mt-3 bg-white/10 rounded-xl p-2.5 backdrop-blur">
+          <label class="block text-[11px] text-emerald-100 mb-1">สายรถที่กำลังปฏิบัติงาน:</label>
+          <select id="driverRouteSelect" onchange="onSelectRoute(this.value)" class="w-full bg-white text-slate-900 font-bold text-sm rounded-lg px-3 py-2 focus:outline-none"></select>
+        </div>
+
+        <!-- Driver GPS Live Sharing Bar -->
+        <div class="mt-3 flex items-center justify-between bg-black/20 rounded-xl px-3 py-2.5 text-xs">
+          <div class="flex items-center gap-2">
+            <span id="driverGpsDot" class="w-2.5 h-2.5 rounded-full bg-emerald-300 animate-ping"></span>
+            <div>
+              <div id="driverGpsStatusTitle" class="font-semibold">ระบบส่งพิกัด GPS อัตโนมัติพร้อมทำงาน</div>
+              <div id="driverGpsCoordText" class="text-[11px] text-emerald-100">กดปุ่มเช็คอินหรือเปิดแชร์พิกัดสดระหว่างวิ่งงาน</div>
+            </div>
+          </div>
+          <button onclick="toggleDriverRealGps()" id="driverGpsBtn" class="bg-white text-emerald-700 font-bold px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap">
+            ส่งพิกัด GPS สด
+          </button>
+        </div>
+      </div>
+
+      <!-- Driver Stops Action Cards -->
+      <div id="driverStopsContainer" class="space-y-4"></div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 3: UPLOAD Z_DELIVERY DETAILS REPORT (PDF / IMAGE / MANUAL)      -->
+    <!-- =================================================================== -->
+    <section id="view-upload" class="hidden space-y-5">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="font-bold text-lg text-slate-800 flex items-center gap-2">
+              <i data-lucide="file-up" class="w-5 h-5 text-blue-600"></i>
+              <span>อัปโหลดใบงานตั้งต้น (Z_Delivery Details Report)</span>
+            </h2>
+            <p class="text-xs sm:text-sm text-slate-500">อัปโหลดไฟล์ <strong>PDF (แนะนำ แม่นยำ ~100%)</strong> หรือ <strong>รูปภาพใบงาน</strong> ระบบจะดึงข้อมูลสายรถ ทะเบียนรถ คนขับ จุดส่ง และรายการสินค้าให้อัตโนมัติ</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="clearEditorForm()" class="bg-red-50 hover:bg-red-100 text-red-600 font-bold text-xs px-3.5 py-2 rounded-xl border border-red-200 flex items-center gap-1.5 transition shadow-sm">
+              <i data-lucide="eraser" class="w-4 h-4"></i>
+              <span>ล้างฟอร์มหน้านี้ (เริ่มใบงานใหม่)</span>
+            </button>
+            <button onclick="deleteCurrentRouteFromSystem()" class="bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold text-xs px-3 py-2 rounded-xl border border-amber-200 flex items-center gap-1.5 transition">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+              <span>ลบสายรถนี้ออกจากระบบ</span>
+            </button>
+            <button onclick="clearAllRoutesFromSystem()" class="bg-red-600 hover:bg-red-700 text-white font-semibold text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 transition shadow-sm">
+              <i data-lucide="trash" class="w-4 h-4"></i>
+              <span>ล้างข้อมูลเก่าทั้งหมดในระบบ</span>
+            </button>
+            <button onclick="loadSampleReportToEditor()" class="bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold text-xs px-3 py-2 rounded-xl border border-blue-200 flex items-center gap-1.5 transition">
+              <i data-lucide="sparkles" class="w-4 h-4"></i>
+              <span>ดึงใบงานตัวอย่าง (RN2603054)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Upload Dropzone -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <label class="cursor-pointer border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50/40 hover:bg-blue-50/80 rounded-2xl p-6 flex flex-col items-center justify-center text-center transition">
+            <input type="file" id="reportFileInput" accept=".pdf,image/*" class="hidden" onchange="handleReportFileUpload(event)" />
+            <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center mb-3 shadow">
+              <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+            </div>
+            <span class="font-bold text-sm sm:text-base text-slate-800">คลิกเลือกไฟล์ใบงาน PDF หรือ รูปภาพ (JPG/PNG)</span>
+            <span class="text-xs text-slate-500 mt-1">รองรับใบงาน Z_Delivery Details Report จากระบบ ERP โดยตรง</span>
+            <span id="uploadFileStatus" class="mt-2 text-xs font-semibold text-blue-600"></span>
+          </label>
+
+          <div class="border border-slate-200 rounded-2xl p-4 bg-slate-50 flex flex-col justify-between">
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="font-bold text-xs text-slate-700">หรือวางข้อความจากไฟล์ PDF / ERP ที่ก๊อปปี้มา:</span>
+                <button onclick="parseTextFromBox()" class="text-xs bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded-lg font-medium">แปลงข้อมูล</button>
+              </div>
+              <textarea id="rawReportTextarea" rows="4" placeholder="ก๊อปปี้ข้อความจากหน้าใบงาน Z_Delivery Details Report มาวางที่นี่แล้วกด 'แปลงข้อมูล'..." class="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1">💡 คำแนะนำ: ไฟล์ PDF ที่สั่ง Save จากระบบจะอ่านรหัสสินค้า จำนวน และชื่อร้านภาษาไทยได้แม่นยำ 100% ทันที</p>
+          </div>
+        </div>
+
+        <!-- Editable Route Preview Form -->
+        <div class="border-t border-slate-200 pt-5">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <h3 class="font-bold text-base text-slate-800 flex items-center gap-2">
+              <i data-lucide="edit-3" class="w-4 h-4 text-emerald-600"></i>
+              <span>ตรวจสอบ / แก้ไขข้อมูลใบงานก่อนปล่อยรถ</span>
+            </h3>
+            <div class="flex items-center gap-2">
+              <button onclick="clearEditorForm()" class="bg-red-50 hover:bg-red-100 text-red-600 text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 flex items-center gap-1">
+                <i data-lucide="eraser" class="w-3.5 h-3.5"></i> ล้างข้อมูลในฟอร์ม
+              </button>
+              <button onclick="addNewStopToEditor()" class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg flex items-center gap-1">
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i> เพิ่มจุดส่งสินค้า
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500">เลขสายรถ (Route No) *</label>
+              <input id="editRouteNo" type="text" value="RN2603054" class="w-full mt-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm font-bold text-slate-800" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500">วันที่วิ่งงาน (Route Date)</label>
+              <input id="editRouteDate" type="text" value="09/11/2026" class="w-full mt-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500">ทะเบียนรถ (Vehicle No) *</label>
+              <input id="editVehicleNo" type="text" value="67-0291" class="w-full mt-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm font-bold text-blue-700" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500">ชื่อคนขับ (Driver) *</label>
+              <input id="editDriver" type="text" value="พนม แนมขุนทด" class="w-full mt-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm font-semibold" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500">สาขาต้นทาง (Site)</label>
+              <input id="editSite" type="text" value="KSPWN" class="w-full mt-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-500">ผู้จัดคิว (Queue By)</label>
+              <input id="editQueueBy" type="text" value="thawatchai.tho" class="w-full mt-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-sm" />
+            </div>
+          </div>
+
+          <!-- Stops Editor List -->
+          <div id="editorStopsContainer" class="space-y-4"></div>
+
+          <div class="mt-6 flex flex-wrap items-center justify-end gap-3 pt-4 border-t border-slate-200">
+            <button onclick="saveEditorRoute()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm px-6 py-3 rounded-xl shadow-md flex items-center gap-2 transition">
+              <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+              <span>บันทึกใบงานจัดส่ง & เปิดระบบ Track ทันที</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- TAB 4: AUDIT HISTORY & CLOUD / EXCEL EXPORT                         -->
+    <!-- =================================================================== -->
+    <section id="view-history" class="hidden space-y-5">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="font-bold text-lg text-slate-800 flex items-center gap-2">
+              <i data-lucide="database" class="w-5 h-5 text-emerald-600"></i>
+              <span>คลังประวัติการจัดส่งสินค้า & รูปถ่ายหลักฐาน (Audit Log)</span>
+            </h2>
+            <p class="text-xs sm:text-sm text-slate-500">ตรวจสอบย้อนหลังว่าทะเบียนไหน ไปส่งเส้นทางอะไร ส่งเสร็จกี่โมง พิกัดไหน พร้อมรูปถ่ายประกอบ และซิงค์ข้อมูลขึ้น Cloud ฟรีอัตโนมัติ</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="exportCsvFallback(event)" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs sm:text-sm px-4 py-2.5 rounded-xl shadow flex items-center gap-2 transition">
+              <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+              <span>ดาวน์โหลดรายงาน Excel (.CSV)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Storage Info Banner -->
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-3.5 mb-4 text-xs text-blue-900 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2.5">
+            <i data-lucide="folder-check" class="w-5 h-5 text-blue-600 shrink-0"></i>
+            <div>
+              <span class="font-bold">ระบบจัดเก็บข้อมูลอัตโนมัติบน Cloud ฟรี 100% (GitHub Pages + Cloud Storage):</span>
+              <span>ข้อมูลการส่ง พิกัด GPS และรูปถ่าย POD ซิงค์ขึ้นระบบคลาวด์อัตโนมัติ (รองรับทั้ง <b>Cloud JSON ฟรี</b>, <b>GitHub Repository Storage</b>, และ <b>Google Sheets / Google Drive 15GB</b>) พร้อมดาวน์โหลดเป็นไฟล์ Excel (.CSV) ได้ทุกที่ทุกเวลา</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter Bar -->
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">ค้นหาทะเบียนรถ / สายรถ / คนขับ</label>
+            <input id="histFilterText" type="text" oninput="renderHistoryTable()" placeholder="เช่น 67-0291, RN2603054, พนม..." class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">ค้นหาชื่อลูกค้า / เลข Order</label>
+            <input id="histFilterCustomer" type="text" oninput="renderHistoryTable()" placeholder="เช่น ซีพีเอฟ, CO26-05495..." class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 mb-1">กรองตามสถานะ</label>
+            <select id="histFilterStatus" onchange="renderHistoryTable()" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm">
+              <option value="all">ทั้งหมด (All Status)</option>
+              <option value="delivered">ส่งสำเร็จแล้ว (Delivered)</option>
+              <option value="en_route">กำลังเดินทาง / ถึงร้าน</option>
+              <option value="pending">รอจัดส่ง (Pending)</option>
+            </select>
+          </div>
+          <div class="flex items-end">
+            <div id="histSummaryStats" class="w-full bg-slate-100 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 text-center">
+              รวมทั้งหมด 0 รายการจุดส่ง
+            </div>
+          </div>
+        </div>
+
+        <!-- Audit Table -->
+        <div class="overflow-x-auto border border-slate-200 rounded-xl">
+          <table class="w-full text-left border-collapse text-xs sm:text-sm">
+            <thead>
+              <tr class="bg-slate-800 text-white">
+                <th class="py-3 px-3">สายรถ / วันที่</th>
+                <th class="py-3 px-3">ทะเบียนรถ / คนขับ</th>
+                <th class="py-3 px-3">จุดส่ง / ลูกค้า</th>
+                <th class="py-3 px-3">รายการสินค้า (Order / จำนวน)</th>
+                <th class="py-3 px-3">สถานะ</th>
+                <th class="py-3 px-3">เวลาส่งเสร็จ & พิกัด</th>
+                <th class="py-3 px-3 text-center">รูปถ่ายหลักฐาน (POD)</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody" class="divide-y divide-slate-200"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- =================================================================== -->
+  <!-- MODAL 1: DRIVER PHOTO UPLOAD & DELIVERY CONFIRMATION MODAL          -->
+  <!-- =================================================================== -->
+  <div id="podModal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2">
+          <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+            <i data-lucide="camera" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base text-slate-800">ถ่ายรูปยืนยันการส่งสินค้า (POD)</h3>
+            <p id="podModalStopTitle" class="text-xs text-slate-500"></p>
+          </div>
+        </div>
+        <button onclick="closePodModal()" class="text-slate-400 hover:text-slate-600 p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Camera / Photo Picker Button -->
+      <div>
+        <label class="cursor-pointer border-2 border-dashed border-emerald-400 bg-emerald-50/60 hover:bg-emerald-50 rounded-2xl p-5 flex flex-col items-center justify-center text-center transition">
+          <input type="file" id="podCameraInput" accept="image/*" capture="environment" multiple class="hidden" onchange="handlePodPhotoSelected(event)" />
+          <div class="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center mb-2 shadow-md">
+            <i data-lucide="camera" class="w-6 h-6"></i>
+          </div>
+          <span class="font-bold text-sm text-emerald-950">กดเพื่อเปิดกล้องถ่ายรูปสินค้า / ใบเซ็นรับ</span>
+          <span class="text-xs text-emerald-700 mt-0.5">หรือเลือกรูปภาพจากอัลบั้มในมือถือ (แนบได้หลายรูป)</span>
+        </label>
+
+        <!-- Preview Selected Photos -->
+        <div id="podPhotoPreviewGrid" class="grid grid-cols-3 gap-2 mt-3"></div>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">ชื่อผู้รับสินค้า (ถ้ามี)</label>
+          <input id="podReceiverInput" type="text" placeholder="ระบุชื่อผู้รับสินค้าหน้างาน..." class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">หมายเหตุเพิ่มเติม</label>
+          <input id="podNoteInput" type="text" placeholder="เช่น ส่งครบถูกต้อง, ฝากไว้ที่จุดรับของ..." class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm" />
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 pt-2">
+        <button onclick="closePodModal()" class="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl text-sm">ยกเลิก</button>
+        <button onclick="submitPodDelivery()" id="submitPodBtn" class="w-2/3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 rounded-xl text-sm shadow-md flex items-center justify-center gap-1.5">
+          <i data-lucide="send" class="w-4 h-4"></i>
+          <span>ยืนยันส่งสำเร็จ & บันทึกรูป</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- MODAL 2: QR CODE & MOBILE LINK SHARING MODAL                        -->
+  <!-- =================================================================== -->
+  <div id="qrModal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div>
+          <h3 class="font-bold text-base text-slate-800">สแกน QR Code หรือส่งลิงก์ให้มือถือใช้งานทันที</h3>
+          <p class="text-xs text-slate-500">เปิดใช้งานได้ทุกเครื่อง (iPhone / Android) โดยไม่ต้องลงแอปหรือตั้งค่าใดๆ</p>
+        </div>
+        <button onclick="closeMobileQrModal()" class="text-slate-400 hover:text-slate-600 p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- Driver QR -->
+        <div class="border border-emerald-200 bg-emerald-50/40 rounded-2xl p-4 flex flex-col items-center text-center">
+          <span class="bg-emerald-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full mb-2">สำหรับคนขับรถ</span>
+          <div id="qrcodeDriver" class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 my-1"></div>
+          <p class="text-xs font-semibold text-slate-700 mt-2">สแกนเพื่อกดส่งพิกัด & ถ่ายรูปส่งงาน</p>
+          <input id="driverShareUrlInput" type="text" readonly class="w-full mt-2 bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-mono text-slate-600 text-center" />
+          <button onclick="copyShareUrl('driverShareUrlInput')" class="mt-2 w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-2 rounded-lg">คัดลอกลิงก์ส่ง LINE ให้คนขับ</button>
+        </div>
+
+        <!-- Customer / Tracker QR -->
+        <div class="border border-orange-200 bg-orange-50/40 rounded-2xl p-4 flex flex-col items-center text-center">
+          <span class="bg-orange-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full mb-2">สำหรับลูกค้า / ผู้ติดตาม</span>
+          <div id="qrcodeTrack" class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 my-1"></div>
+          <p class="text-xs font-semibold text-slate-700 mt-2">สแกนเพื่อดูตำแหน่งรถ & สถานะสด</p>
+          <input id="trackShareUrlInput" type="text" readonly class="w-full mt-2 bg-white border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-mono text-slate-600 text-center" />
+          <button onclick="copyShareUrl('trackShareUrlInput')" class="mt-2 w-full bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold py-2 rounded-lg">คัดลอกลิงก์ส่งให้ลูกค้า</button>
+        </div>
+      </div>
+
+      <div id="publicTunnelInfoBox" class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600"></div>
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- MODAL 3: ORIGINAL REPORT SHEET & PHOTO LIGHTBOX                     -->
+  <!-- =================================================================== -->
+  <div id="lightboxModal" onclick="closeLightbox()" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 hidden flex flex-col items-center justify-center p-4">
+    <div class="max-w-4xl w-full flex flex-col items-center" onclick="event.stopPropagation()">
+      <div class="w-full flex items-center justify-between text-white mb-2">
+        <span id="lightboxCaption" class="font-semibold text-sm"></span>
+        <button onclick="closeLightbox()" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg text-xs">ปิดหน้าต่าง (X)</button>
+      </div>
+      <img id="lightboxImg" src="" alt="Preview" class="max-h-[82vh] w-auto rounded-xl shadow-2xl border border-white/20 bg-white" />
+    </div>
+  </div>
+
+  <!-- =================================================================== -->
+  <!-- MODAL 4: GITHUB & FREE CLOUD STORAGE SETTINGS MODAL                 -->
+  <!-- =================================================================== -->
+  <div id="cloudConfigModal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3">
+    <div class="bg-white rounded-2xl max-w-2xl w-full p-5 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
+            <i data-lucide="cloud-cog" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base text-slate-800">ตั้งค่าระบบจัดเก็บข้อมูลบน GitHub & Cloud (ฟรี 100%)</h3>
+            <p class="text-xs text-slate-500">เลือกแหล่งเก็บข้อมูลคลาวด์ฟรี และกำหนดลิงก์เว็บไซต์ GitHub Pages ของคุณ</p>
+          </div>
+        </div>
+        <button onclick="closeCloudConfigModal()" class="text-slate-400 hover:text-slate-600 p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Public Link URL Setting -->
+      <div class="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+        <label class="block text-xs font-bold text-slate-700">1. ลิงก์เว็บไซต์หลักสำหรับสร้าง QR Code (GitHub Pages URL)</label>
+        <input id="cfgPublicSiteUrl" type="text" placeholder="เช่น about:invalid#zPythonSafez" class="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono text-slate-800" />
+        <p class="text-[11px] text-slate-500">💡 เมื่อคุณนำไฟล์ <code class="bg-white px-1 border rounded">index.html</code> ไปวางบน GitHub แล้วเปิดฟีเจอร์ <b>GitHub Pages</b> ระบบจะตรวจจับลิงก์ <code class="bg-white px-1 border rounded">(link removed)</code> ให้อัตโนมัติทันทีโดยไม่ต้องกรอกเอง</p>
+      </div>
+
+      <!-- Cloud Storage Provider Selector -->
+      <div class="space-y-3">
+        <label class="block text-xs font-bold text-slate-700">2. เลือกระบบจัดเก็บฐานข้อมูลบนคลาวด์ (ฟรีทั้งหมด):</label>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <label class="cursor-pointer border rounded-xl p-3 flex flex-col gap-1 transition hover:bg-indigo-50/40" id="providerCard-npoint">
+            <div class="flex items-center gap-2">
+              <input type="radio" name="cloudProvider" value="npoint" onchange="onSelectCloudProvider()" class="text-indigo-600" />
+              <span class="font-bold text-xs text-slate-800">Cloud JSON (พร้อมใช้ทันที)</span>
+            </div>
+            <span class="text-[11px] text-slate-500 pl-5">ไม่ต้องสมัครหรือตั้งค่าใดๆ ซิงค์ข้อมูลผ่าน JSON Cloud ฟรี 24 ชม.</span>
+          </label>
+
+          <label class="cursor-pointer border rounded-xl p-3 flex flex-col gap-1 transition hover:bg-indigo-50/40" id="providerCard-github">
+            <div class="flex items-center gap-2">
+              <input type="radio" name="cloudProvider" value="github" onchange="onSelectCloudProvider()" class="text-indigo-600" />
+              <span class="font-bold text-xs text-slate-800">GitHub Repo Storage</span>
+            </div>
+            <span class="text-[11px] text-slate-500 pl-5">บันทึกข้อมูลและรูปถ่ายลงใน GitHub Repository ของคุณโดยตรง</span>
+          </label>
+
+          <label class="cursor-pointer border rounded-xl p-3 flex flex-col gap-1 transition hover:bg-indigo-50/40" id="providerCard-gas">
+            <div class="flex items-center gap-2">
+              <input type="radio" name="cloudProvider" value="gas" onchange="onSelectCloudProvider()" class="text-indigo-600" />
+              <span class="font-bold text-xs text-slate-800">Google Sheets & Drive</span>
+            </div>
+            <span class="text-[11px] text-slate-500 pl-5">บันทึกข้อมูลลง Google Sheets และเก็บรูปถ่ายใน Google Drive (ฟรี 15GB)</span>
+          </label>
+        </div>
+
+        <!-- Option A: npoint / Custom JSON Endpoint -->
+        <div id="providerBox-npoint" class="bg-emerald-50/50 border border-emerald-200 rounded-xl p-3.5 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-emerald-900">URL ฐานข้อมูล Cloud JSON (npoint.io):</span>
+            <a rel="noopener" class="text-[11px] text-emerald-700 underline font-semibold" data-link-removed aria-disabled="true" role="link" title="Link removed: its address didn't come from this conversation.">สร้าง Bin ใหม่ของคุณเองฟรีที่ npoint.io ↗</a>
+          </div>
+          <input id="cfgNpointUrl" type="text" class="w-full bg-white border border-emerald-300 rounded-lg px-3 py-1.5 text-xs font-mono" />
+          <p class="text-[11px] text-emerald-700">✓ ค่าเริ่มต้นพร้อมใช้งานได้ทันที หรือหากต้องการแยกฐานข้อมูลส่วนตัว สามารถเข้าเว็บ npoint.io กด New -> กด Lock/Save แล้วนำลิงก์ API มาวางที่นี่ได้ฟรี</p>
+        </div>
+
+        <!-- Option B: GitHub Repository API Storage -->
+        <div id="providerBox-github" class="hidden bg-slate-50 border border-slate-300 rounded-xl p-3.5 space-y-2.5">
+          <div class="text-xs font-bold text-slate-800">ตั้งค่าการบันทึกข้อมูลลง GitHub Repository โดยตรง (ผ่าน GitHub API)</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600">ชื่อผู้ใช้ / ชื่อ Repo (เช่น username/ksp-tracker)</label>
+              <input id="cfgGhRepo" type="text" placeholder="username/ksp-tracker" class="w-full mt-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600">Branch (ค่าเริ่มต้น: main)</label>
+              <input id="cfgGhBranch" type="text" value="main" placeholder="main" class="w-full mt-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-[11px] font-semibold text-slate-600">GitHub Personal Access Token (Fine-grained Token ที่เปิดสิทธิ์ Contents: Read & Write)</label>
+            <input id="cfgGhToken" type="password" placeholder="github_pat_..." class="w-full mt-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono" />
+          </div>
+          <p class="text-[11px] text-slate-500">ระบบจะสร้างและอัปเดตไฟล์ <code class="bg-white px-1 border rounded">data/ksp_db.json</code> ใน GitHub Repo ของคุณให้อัตโนมัติทุกครั้งที่มีการเพิ่มใบงานหรือส่งของ</p>
+        </div>
+
+        <!-- Option C: Google Apps Script (Google Sheets + Drive) -->
+        <div id="providerBox-gas" class="hidden bg-blue-50/50 border border-blue-200 rounded-xl p-3.5 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-blue-900">Google Apps Script Web App URL (เชื่อม Google Sheets + Drive ฟรี 15GB):</span>
+            <button onclick="copyGasTemplateCode()" class="bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-semibold px-2.5 py-1 rounded-lg">คัดลอกโค้ด Apps Script</button>
+          </div>
+          <input id="cfgGasUrl" type="text" placeholder="about:invalid#zPythonSafez" class="w-full bg-white border border-blue-300 rounded-lg px-3 py-1.5 text-xs font-mono" />
+          <p class="text-[11px] text-blue-800">วิธีทำ: เปิด Google Sheets -> เมนูส่วนขยาย (Extensions) -> Apps Script -> วางโค้ดจากปุ่มด้านบน -> กด Deploy เป็น Web App (เลือก Anyone) แล้วนำลิงก์มาวาง</p>
+        </div>
+      </div>
+
+      <!-- Backup / Restore JSON File -->
+      <div class="border-t border-slate-200 pt-3 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <button onclick="downloadFullJsonBackup()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-300 flex items-center gap-1">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i> สำรองฐานข้อมูล (.JSON)
+          </button>
+          <label class="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-300 flex items-center gap-1">
+            <i data-lucide="upload" class="w-3.5 h-3.5"></i> นำเข้าไฟล์ (.JSON)
+            <input type="file" accept=".json" class="hidden" onchange="importFullJsonBackup(event)" />
+          </label>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="closeCloudConfigModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-4 py-2 rounded-xl text-xs">ปิด</button>
+          <button onclick="saveCloudConfigSettings()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-5 py-2 rounded-xl text-xs shadow-md">บันทึกการตั้งค่า Cloud</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toastBox" class="fixed bottom-5 right-5 z-50 hidden bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl border border-white/10 text-xs sm:text-sm font-medium flex items-center gap-2">
+    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+    <span id="toastText"></span>
+  </div>
+
+  <!-- APPLICATION SCRIPT -->
+  <script>
+    // Safe Storage Helper for Sandboxed Iframes & Standard Browsers
+    function safeGetStorage(key) {
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+    function safeSetStorage(key, val) {
+      try { localStorage.setItem(key, val); } catch (e) {}
+    }
+    function safeRemoveStorage(key) {
+      try { localStorage.removeItem(key); } catch (e) {}
+    }
+
+    // Configure PDF.js worker
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    // Global State — GitHub Pages + Multi-Cloud Free Storage Mode (npoint / GitHub Repo API / Google Sheets & Drive)
+    function detectCurrentSiteBaseUrl() {
+      const savedCustomUrl = safeGetStorage("ksp_cfg_public_url");
+      if (savedCustomUrl && savedCustomUrl.trim().startsWith("http")) {
+        return savedCustomUrl.trim().replace(/\/$/, "");
+      }
+      if (window.location.protocol === "http:" || window.location.protocol === "https:") {
+        const cleanPath = window.location.pathname.replace(/\/index\.html$/i, "").replace(/\/$/, "");
+        return window.location.origin + cleanPath;
+      }
+      return "about:invalid#zPythonSafez";
+    }
+
+    let PERMANENT_CLOUD_URL = detectCurrentSiteBaseUrl();
+    const DEFAULT_NPOINT_URL = "about:invalid#zPythonSafez";
+    const IS_STATIC_CLOUD_HOST = (
+      window.location.hostname.includes("github.io") ||
+      window.location.hostname.includes("surge.sh") ||
+      window.location.hostname.includes("pages.dev") ||
+      window.location.hostname.includes("netlify.app") ||
+      window.location.hostname.includes("vercel.app")
+    );
+    const API_BASE = window.location.protocol === "file:" ? "about:invalid#zPythonSafez" : "";
+
+    function getCloudConfig() {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("npoint")) safeSetStorage("ksp_cfg_npoint_url", params.get("npoint"));
+      if (params.get("gas")) {
+        safeSetStorage("ksp_cfg_gas_url", params.get("gas"));
+        safeSetStorage("ksp_cfg_provider", "gas");
+      }
+      if (params.get("gh_repo")) {
+        safeSetStorage("ksp_cfg_gh_repo", params.get("gh_repo"));
+        safeSetStorage("ksp_cfg_provider", "github");
+      }
+      if (params.get("gh_token")) {
+        safeSetStorage("ksp_cfg_gh_token", params.get("gh_token"));
+      }
+      return {
+        provider: safeGetStorage("ksp_cfg_provider") || "npoint",
+        publicUrl: safeGetStorage("ksp_cfg_public_url") || detectCurrentSiteBaseUrl(),
+        npointUrl: safeGetStorage("ksp_cfg_npoint_url") || DEFAULT_NPOINT_URL,
+        ghRepo: safeGetStorage("ksp_cfg_gh_repo") || "",
+        ghBranch: safeGetStorage("ksp_cfg_gh_branch") || "main",
+        ghToken: safeGetStorage("ksp_cfg_gh_token") || "",
+        gasUrl: safeGetStorage("ksp_cfg_gas_url") || ""
+      };
+    }
+
+    let allRoutes = [];
+    let currentRouteNo = "RN2603054";
+    let currentTab = "track";
+    let cloudClearedAtMs = 0;
+    let cloudDeletedMap = {};
+    let serverInfo = {
+      public_url: PERMANENT_CLOUD_URL,
+      local_url: "about:invalid#zPythonSafez"
+    };
+
+    // Map State
+    let map = null;
+    let truckMarker = null;
+    let stopMarkers = [];
+    let routePolyline = null;
+    let simInterval = null;
+    let realGpsWatchId = null;
+
+    // POD Modal State
+    let activePodStopId = null;
+    let selectedPodPhotos = [];
+
+    // Editor State
+    let editorStops = [];
+
+    // Default initial route fallback
+    const FALLBACK_SAMPLE_ROUTE = {
+      route_no: "RN2603054",
+      site: "KSPWN",
+      route_date: "09/11/2026",
+      load_date: "09/11/2026",
+      revision: "0",
+      vehicle_no: "67-0291",
+      driver: "พนม แนมขุนทด",
+      queue_by: "thawatchai.tho",
+      status: "in_transit",
+      origin_name: "คลังสินค้า KSPWN (จุดปล่อยรถ)",
+      origin_lat: 14.1240,
+      origin_lng: 100.2850,
+      current_lat: 14.2450,
+      current_lng: 100.0850,
+      last_gps_time: "09/11/2026 08:45:00",
+      started_at: "09/11/2026 08:30:00",
+      completed_at: "",
+      report_image: "sample_report_RN2603054.jpg",
+      stops: [
+        {
+          stop_id: "STOP-1",
+          seq: 1,
+          customer_code: "10116C5 - 36",
+          customer_name: "ซีพีเอฟ (ประเทศไทย) CPFTH ฟ.สุพรรณบุรี",
+          address: "275 ม.14 ต.จระเข้สามพัน อ.อู่ทอง จ.สุพรรณบุรี",
+          lat: 14.3725,
+          lng: 99.8914,
+          status: "en_route",
+          departed_at: "09/11/2026 08:35:00",
+          arrived_at: "",
+          delivered_at: "",
+          receiver_name: "",
+          driver_note: "",
+          photos: [],
+          items: [
+            {
+              transfer: "19261-5721",
+              line: "1",
+              item_code: "2020308164",
+              req_load: 100.00,
+              description: "PAD ECO-KOOL (2000+30)x600x150mm(45/45) BROWN มีแผ่นกระจายน้ำ",
+              matltran: "",
+              order_no: "CO26-05495/1",
+              due_wdel: "09/11/2026",
+              kit: 0.00
+            }
+          ]
+        },
+        {
+          stop_id: "STOP-2",
+          seq: 2,
+          customer_code: "3015800 - 0",
+          customer_name: "ชีวา อินเตอร์เทรด (ประเทศไทย)",
+          address: "14/6 ม.7 ต.ไทรใหญ่ อ.ไทรน้อย จ.นนทบุรี",
+          lat: 14.0356,
+          lng: 100.3128,
+          status: "pending",
+          departed_at: "",
+          arrived_at: "",
+          delivered_at: "",
+          receiver_name: "",
+          driver_note: "",
+          photos: [],
+          items: [
+            {
+              transfer: "17261-0910",
+              line: "1",
+              item_code: "2130101039",
+              req_load: 13.00,
+              description: "บู๊ชยาง 4 ใบพัด",
+              matltran: "1570114",
+              order_no: "CO26-05676/1",
+              due_wdel: "04/11/2026",
+              kit: 0.00
+            },
+            {
+              transfer: "18261-0458",
+              line: "1",
+              item_code: "2130201011",
+              req_load: 20.00,
+              description: "ขาตั้งบู๊ชพลาสติก",
+              matltran: "1570116",
+              order_no: "CO26-05676/2",
+              due_wdel: "04/11/2026",
+              kit: 0.00
+            }
+          ]
+        },
+        {
+          stop_id: "STOP-3",
+          seq: 3,
+          customer_code: "3B02200 - 1",
+          customer_name: "สิราลักษณ์ เดชศิริมหาวงศ์ ร้านเดชศิริมหาวงศ์",
+          address: "99/2 ม.5 ต.บางเลน อ.สองพี่น้อง จ.สุพรรณบุรี",
+          lat: 14.2258,
+          lng: 100.0219,
+          status: "pending",
+          departed_at: "",
+          arrived_at: "",
+          delivered_at: "",
+          receiver_name: "",
+          driver_note: "",
+          photos: [],
+          items: [
+            {
+              transfer: "19261-5666",
+              line: "1",
+              item_code: "1058010128S",
+              req_load: 2.00,
+              description: "HCP SUBM PUMP FN-35P-A1 5HP 3PH 3\"380-415V.50Hz.(ใบพัด SUS316) พร้อมหน้าแปลน",
+              matltran: "1575366",
+              order_no: "CO26-05739/1",
+              due_wdel: "06/11/2026",
+              kit: 0.00
+            }
+          ]
+        }
+      ],
+      timeline: [
+        {
+          id: "LOG-2",
+          time: "09/11/2026 08:30:00",
+          title: "รถออกจากคลังสินค้า KSPWN",
+          detail: "รถทะเบียน 67-0291 เริ่มออกเดินทางจากคลังสินค้า มุ่งหน้าสู่จุดส่งที่ 1: ซีพีเอฟ (ประเทศไทย) CPFTH ฟ.สุพรรณบุรี",
+          type: "transit",
+          lat: 14.1240,
+          lng: 100.2850
+        },
+        {
+          id: "LOG-1",
+          time: "09/11/2026 08:00:00",
+          title: "สร้างใบงานจัดส่งสินค้า (Loading)",
+          detail: "อัปโหลดใบงาน Z_Delivery Details Report สายรถ RN2603054 ทะเบียน 67-0291 (คนขับ: พนม แนมขุนทด) จำนวน 3 จุดส่ง",
+          type: "info",
+          lat: 14.1240,
+          lng: 100.2850
+        }
+      ]
+    };
+
+    function showToast(msg) {
+      const box = document.getElementById("toastBox");
+      document.getElementById("toastText").textContent = msg;
+      box.classList.remove("hidden");
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => box.classList.add("hidden"), 3500);
+    }
+
+    function routeScore(r) {
+      if (!r) return 0;
+      const ts = Number(r.updated_at_ms || 0);
+      const deliv = (r.stops || []).filter(s => s.status === "delivered").length * 1000;
+      const photos = (r.stops || []).reduce((acc, s) => acc + ((s.photos || []).length * 500), 0);
+      const logs = (r.timeline || []).length * 100;
+      return ts + deliv + photos + logs;
+    }
+
+    function normalizeRoutesArray(rawRoutes) {
+      if (Array.isArray(rawRoutes)) return rawRoutes.filter(r => r && r.route_no);
+      if (rawRoutes && typeof rawRoutes === "object") {
+        return Object.values(rawRoutes).filter(r => r && r.route_no);
+      }
+      return [];
+    }
+
+    function mergeRouteLists(listA, listB, deletedMap = {}, clearedAt = 0) {
+      const map = new Map();
+      for (const r of [...normalizeRoutesArray(listA), ...normalizeRoutesArray(listB)]) {
+        if (!r || !r.route_no) continue;
+        const rTime = Number(r.updated_at_ms || 0);
+        if (clearedAt && rTime > 0 && rTime < clearedAt) continue;
+        if (deletedMap[r.route_no] && (!rTime || rTime <= deletedMap[r.route_no])) continue;
+        const existing = map.get(r.route_no);
+        if (!existing || routeScore(r) >= routeScore(existing)) {
+          map.set(r.route_no, r);
+        }
+      }
+      return Array.from(map.values());
+    }
+
+    function updateSyncBadgeUI(cfg) {
+      const badgeEl = document.getElementById("syncStatusText");
+      if (!badgeEl) return;
+      if (cfg.provider === "github" && cfg.ghRepo) {
+        badgeEl.textContent = `GitHub Cloud (${cfg.ghRepo})`;
+      } else if (cfg.provider === "gas" && cfg.gasUrl) {
+        badgeEl.textContent = "Google Sheets & Drive Cloud";
+      } else {
+        badgeEl.textContent = "Cloud 24 ชม. (ซิงค์อัตโนมัติ)";
+      }
+    }
+
+    async function fetchFromGitHubRepo(cfg) {
+      if (!cfg.ghRepo) return null;
+      const branch = cfg.ghBranch || "main";
+      if (cfg.ghToken) {
+        const apiUrl = `about:invalid#zPythonSafez`;
+        const res = await fetch(apiUrl, {
+          headers: {
+            "Authorization": `Bearer ${cfg.ghToken}`,
+            "Accept": "application/vnd.github.v3+json"
+          },
+          cache: "no-store"
+        });
+        if (res.ok) {
+          const meta = await res.json();
+          window._lastGhFileSha = meta.sha;
+          const decoded = decodeURIComponent(escape(atob(meta.content.replace(/\s/g, ""))));
+          return JSON.parse(decoded);
+        }
+      } else {
+        const rawUrl = `about:invalid#zPythonSafez`;
+        const res = await fetch(rawUrl, { cache: "no-store" });
+        if (res.ok) {
+          return await res.json();
+        }
+      }
+      return null;
+    }
+
+    async function pushToGitHubRepo(cfg, payloadObj) {
+      if (!cfg.ghRepo || !cfg.ghToken) return false;
+      const branch = cfg.ghBranch || "main";
+      const apiUrl = `about:invalid#zPythonSafez`;
+
+      let sha = window._lastGhFileSha || null;
+      try {
+        const getRes = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch)}&_=${Date.now()}`, {
+          headers: {
+            "Authorization": `Bearer ${cfg.ghToken}`,
+            "Accept": "application/vnd.github.v3+json"
+          }
+        });
+        if (getRes.ok) {
+          const meta = await getRes.json();
+          sha = meta.sha;
+        }
+      } catch (e) {}
+
+      const jsonStr = JSON.stringify(payloadObj, null, 2);
+      const base64Content = btoa(unescape(encodeURIComponent(jsonStr)));
+      const bodyObj = {
+        message: `Update KSP Delivery Data (${new Date().toISOString()})`,
+        content: base64Content,
+        branch: branch
+      };
+      if (sha) bodyObj.sha = sha;
+
+      const putRes = await fetch(apiUrl, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${cfg.ghToken}`,
+          "Accept": "application/vnd.github.v3+json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(bodyObj)
+      });
+      if (putRes.ok) {
+        const resData = await putRes.json();
+        if (resData && resData.content && resData.content.sha) {
+          window._lastGhFileSha = resData.content.sha;
+        }
+        return true;
+      }
+      return false;
+    }
+
+    async function fetchCloudDbState() {
+      const cfg = getCloudConfig();
+      updateSyncBadgeUI(cfg);
+      try {
+        let data = null;
+        if (cfg.provider === "github" && cfg.ghRepo) {
+          data = await fetchFromGitHubRepo(cfg);
+        } else if (cfg.provider === "gas" && cfg.gasUrl) {
+          const res = await fetch(`${cfg.gasUrl}?action=get&_=${Date.now()}`, { cache: "no-store" });
+          if (res.ok) data = await res.json();
+        } else {
+          const targetUrl = cfg.npointUrl || DEFAULT_NPOINT_URL;
+          const res = await fetch(`${targetUrl}?_=${Date.now()}`, { cache: "no-store" });
+          if (res.ok) data = await res.json();
+        }
+
+        if (data && typeof data === "object") {
+          return {
+            version: data.version || 2,
+            updated_at_ms: Number(data.updated_at_ms || 0),
+            cleared_at_ms: Number(data.cleared_at_ms || 0),
+            deleted_routes: data.deleted_routes || {},
+            routes: normalizeRoutesArray(data.routes)
+          };
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    async function pushCloudDbState(payloadObj) {
+      const cfg = getCloudConfig();
+      try {
+        if (cfg.provider === "github" && cfg.ghRepo && cfg.ghToken) {
+          await pushToGitHubRepo(cfg, payloadObj);
+        } else if (cfg.provider === "gas" && cfg.gasUrl) {
+          await fetch(cfg.gasUrl, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(payloadObj)
+          });
+        } else {
+          const targetUrl = cfg.npointUrl || DEFAULT_NPOINT_URL;
+          await fetch(targetUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payloadObj)
+          });
+        }
+      } catch (e) {}
+    }
+
+    async function saveRouteEverywhere(routeObj) {
+      if (!routeObj || !routeObj.route_no) return;
+      routeObj.updated_at_ms = Date.now();
+
+      const idx = allRoutes.findIndex(r => r.route_no === routeObj.route_no);
+      if (idx >= 0) allRoutes[idx] = routeObj;
+      else allRoutes.unshift(routeObj);
+      safeSetStorage("ksp_routes_backup", JSON.stringify(allRoutes));
+
+      // 1. Save to Selected Free Cloud Database (npoint / GitHub Repo / Google Apps Script)
+      try {
+        const cState = (await fetchCloudDbState()) || {
+          version: 2,
+          updated_at_ms: Date.now(),
+          cleared_at_ms: cloudClearedAtMs,
+          deleted_routes: cloudDeletedMap,
+          routes: []
+        };
+        if (cState.deleted_routes) delete cState.deleted_routes[routeObj.route_no];
+        const merged = mergeRouteLists([routeObj], cState.routes, cState.deleted_routes, cState.cleared_at_ms);
+        await pushCloudDbState({
+          version: 2,
+          updated_at_ms: Date.now(),
+          cleared_at_ms: cState.cleared_at_ms || 0,
+          deleted_routes: cState.deleted_routes || {},
+          routes: merged
+        });
+      } catch (eCloud) {}
+
+      // 2. Also save to local server if running on local network
+      if (!IS_STATIC_CLOUD_HOST && window.location.protocol !== "file:") {
+        try {
+          await fetch(`${API_BASE}/api/routes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ route: routeObj })
+          });
+        } catch (eLocal) {}
+      }
+    }
+
+    async function fetchServerData(includeInfo = false) {
+      PERMANENT_CLOUD_URL = detectCurrentSiteBaseUrl();
+      serverInfo.public_url = PERMANENT_CLOUD_URL;
+
+      const savedLocal = safeGetStorage("ksp_routes_backup");
+      let localRoutes = [];
+      if (savedLocal) {
+        try { localRoutes = JSON.parse(savedLocal) || []; } catch (err) {}
+      }
+
+      // 1. Fetch from Free Cloud DB
+      const cloudState = await fetchCloudDbState();
+      let cloudRoutes = [];
+      if (cloudState) {
+        cloudClearedAtMs = Math.max(cloudClearedAtMs, cloudState.cleared_at_ms || 0);
+        cloudDeletedMap = { ...cloudDeletedMap, ...(cloudState.deleted_routes || {}) };
+        cloudRoutes = cloudState.routes || [];
+      }
+
+      // 2. Fetch from Local PC Server if applicable
+      let serverRoutes = [];
+      if (!IS_STATIC_CLOUD_HOST && window.location.protocol !== "file:") {
+        try {
+          const res = await fetch(`${API_BASE}/api/routes`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.ok && Array.isArray(data.routes)) {
+              serverRoutes = data.routes;
+            }
+          }
+        } catch (e) {}
+      }
+
+      const combined = mergeRouteLists(
+        mergeRouteLists(cloudRoutes, serverRoutes, cloudDeletedMap, cloudClearedAtMs),
+        localRoutes,
+        cloudDeletedMap,
+        cloudClearedAtMs
+      );
+
+      if (combined.length > 0 || cloudClearedAtMs > 0) {
+        allRoutes = combined;
+        safeSetStorage("ksp_routes_backup", JSON.stringify(allRoutes));
+        return;
+      }
+
+      allRoutes = [JSON.parse(JSON.stringify(FALLBACK_SAMPLE_ROUTE))];
+    }
+
+    function getCurrentRoute() {
+      return allRoutes.find(r => r.route_no === currentRouteNo) || allRoutes[0] || FALLBACK_SAMPLE_ROUTE;
+    }
+
+    function initMap() {
+      if (map) return;
+      map = L.map("liveMap").setView([14.2450, 100.0850], 10);
+      L.tileLayer("about:invalid#zPythonSafez", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap"
+      }).addTo(map);
+    }
+
+    function updateMapDisplay(fit = false) {
+      initMap();
+      const rt = getCurrentRoute();
+      if (!rt) return;
+
+      stopMarkers.forEach(m => map.removeLayer(m));
+      stopMarkers = [];
+      if (routePolyline) {
+        map.removeLayer(routePolyline);
+        routePolyline = null;
+      }
+
+      const latlngs = [];
+      const origLat = rt.origin_lat || 14.1240;
+      const origLng = rt.origin_lng || 100.2850;
+      latlngs.push([origLat, origLng]);
+
+      const originIcon = L.divIcon({
+        className: "",
+        html: `<div class="w-8 h-8 rounded-xl bg-slate-900 text-white border-2 border-white shadow-lg flex items-center justify-center text-xs font-bold">คลัง</div>`,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+      const om = L.marker([origLat, origLng], { icon: originIcon })
+        .addTo(map)
+        .bindPopup(`<b>จุดปล่อยรถ: ${rt.origin_name || 'คลังสินค้า ' + rt.site}</b><br/>สายรถ: ${rt.route_no}`);
+      stopMarkers.push(om);
+
+      (rt.stops || []).forEach(st => {
+        const sLat = parseFloat(st.lat) || 14.35;
+        const sLng = parseFloat(st.lng) || 100.05;
+        latlngs.push([sLat, sLng]);
+
+        let bg = "bg-slate-500";
+        let statusLabel = "รอจัดส่ง";
+        if (st.status === "delivered") {
+          bg = "bg-emerald-600";
+          statusLabel = "จัดส่งสำเร็จ ✓";
+        } else if (st.status === "arrived") {
+          bg = "bg-blue-600";
+          statusLabel = "ถึงหน้าร้านแล้ว";
+        } else if (st.status === "en_route") {
+          bg = "bg-blue-600";
+          statusLabel = "กำลังเดินทางไปส่ง";
+        }
+
+        const stIcon = L.divIcon({
+          className: "",
+          html: `<div class="w-8 h-8 rounded-full ${bg} text-white border-2 border-white shadow-lg flex items-center justify-center font-bold text-xs">${st.seq}</div>`,
+          iconSize: [32, 32],
+          iconAnchor: [16, 16]
+        });
+
+        const itemLines = (st.items || []).map(it => `• ${it.description} (<b>${it.req_load}</b>) [${it.order_no}]`).join("<br/>");
+        const m = L.marker([sLat, sLng], { icon: stIcon })
+          .addTo(map)
+          .bindPopup(`
+            <div class="text-xs space-y-1">
+              <div class="font-bold text-slate-900">จุดส่งที่ ${st.seq}: ${st.customer_name}</div>
+              <div class="text-slate-600">${st.address}</div>
+              <div class="font-semibold text-emerald-700">สถานะ: ${statusLabel} ${st.delivered_at ? '(' + st.delivered_at + ')' : ''}</div>
+              <hr class="my-1"/>
+              <div>${itemLines}</div>
+            </div>
+          `);
+        stopMarkers.push(m);
+      });
+
+      routePolyline = L.polyline(latlngs, {
+        color: "#2563eb",
+        weight: 4,
+        opacity: 0.65,
+        dashArray: "8, 8"
+      }).addTo(map);
+
+      const tLat = parseFloat(rt.current_lat) || origLat;
+      const tLng = parseFloat(rt.current_lng) || origLng;
+      const truckIcon = L.divIcon({
+        className: "",
+        html: `
+          <div class="relative flex items-center justify-center">
+            <div class="w-11 h-11 rounded-2xl bg-orange-600 text-white border-2 border-white shadow-xl flex flex-col items-center justify-center live-pulse">
+              <span class="text-[9px] font-bold leading-none">${rt.vehicle_no || 'TRUCK'}</span>
+              <span class="text-[11px] font-extrabold leading-tight">🚚</span>
+            </div>
+          </div>
+        `,
+        iconSize: [44, 44],
+        iconAnchor: [22, 22]
+      });
+
+      if (truckMarker) {
+        truckMarker.setLatLng([tLat, tLng]);
+        truckMarker.setIcon(truckIcon);
+      } else {
+        truckMarker = L.marker([tLat, tLng], { icon: truckIcon, zIndexOffset: 1000 }).addTo(map);
+      }
+      truckMarker.bindPopup(`<b>🚚 รถขนส่งทะเบียน ${rt.vehicle_no}</b><br/>คนขับ: ${rt.driver}<br/>สายรถ: ${rt.route_no}<br/>อัปเดตล่าสุด: ${rt.last_gps_time || '-'}`);
+
+      if (fit && latlngs.length > 0) {
+        const allPts = [...latlngs, [tLat, tLng]];
+        map.fitBounds(allPts, { padding: [35, 35] });
+      }
+    }
+
+    function fitMapBounds() {
+      updateMapDisplay(true);
+    }
+
+    function renderRouteSelectors() {
+      const sel1 = document.getElementById("trackRouteSelect");
+      const sel2 = document.getElementById("driverRouteSelect");
+      const html = allRoutes.map(r => {
+        const doneCount = (r.stops || []).filter(s => s.status === "delivered").length;
+        const totalCount = (r.stops || []).length;
+        return `<option value="${r.route_no}" ${r.route_no === currentRouteNo ? 'selected' : ''}>
+          ${r.route_no} | ทะเบียน ${r.vehicle_no} (${r.driver}) — ส่งแล้ว ${doneCount}/${totalCount} จุด
+        </option>`;
+      }).join("");
+      sel1.innerHTML = html;
+      sel2.innerHTML = html;
+    }
+
+    function onSelectRoute(routeNo) {
+      currentRouteNo = routeNo;
+      renderAll();
+      updateMapDisplay(true);
+    }
+
+    function renderTrackView() {
+      const rt = getCurrentRoute();
+      if (!rt) return;
+
+      const stops = rt.stops || [];
+      const deliveredCount = stops.filter(s => s.status === "delivered").length;
+      const totalStops = stops.length;
+
+      document.getElementById("bannerRouteNo").textContent = `สายรถ ${rt.route_no} (สาขา ${rt.site || 'KSPWN'})`;
+      document.getElementById("bannerSubText").textContent = `ทะเบียนรถ: ${rt.vehicle_no} | คนขับ: ${rt.driver} | วันที่ใบงาน: ${rt.route_date}`;
+      document.getElementById("lastGpsTimeLabel").textContent = `อัปเดตล่าสุด: ${rt.last_gps_time || '-'}`;
+      document.getElementById("currentCoordsBadge").textContent = `GPS: ${Number(rt.current_lat || 14.245).toFixed(4)}, ${Number(rt.current_lng || 100.085).toFixed(4)}`;
+      document.getElementById("stopProgressCount").textContent = `ส่งสำเร็จ ${deliveredCount} / ${totalStops} จุดส่ง`;
+
+      const statusBadge = document.getElementById("bannerStatusBadge");
+      if (rt.status === "completed" || (totalStops > 0 && deliveredCount === totalStops)) {
+        statusBadge.textContent = "จัดส่งครบทุกจุดสำเร็จ ✓";
+        statusBadge.className = "bg-emerald-500 text-white text-xs font-bold px-2.5 py-0.5 rounded-full";
+      } else if (stops.some(s => s.status === "arrived")) {
+        statusBadge.textContent = "ถึงหน้าร้านลูกค้า — กำลังลงสินค้า";
+        statusBadge.className = "bg-blue-600 text-white text-xs font-bold px-2.5 py-0.5 rounded-full";
+      } else {
+        statusBadge.textContent = "กำลังเดินทางจัดส่ง (In Transit)";
+        statusBadge.className = "bg-white text-orange-600 text-xs font-bold px-2.5 py-0.5 rounded-full";
+      }
+
+      const step1Done = true;
+      const step2Done = rt.status !== "loading" || deliveredCount > 0 || stops.some(s => s.status !== "pending");
+      const step3Done = deliveredCount > 0 || stops.some(s => s.status === "arrived" || s.status === "en_route");
+      const step4Done = totalStops > 0 && deliveredCount === totalStops;
+
+      const stepsData = [
+        { label: "1. ขึ้นสินค้าที่คลัง", sub: `Site: ${rt.site || 'KSPWN'}`, active: step1Done },
+        { label: "2. รถออกจากคลังแล้ว", sub: rt.started_at || "พร้อมเดินทาง", active: step2Done },
+        { label: `3. กำลังนำส่งตามจุด (${deliveredCount}/${totalStops})`, sub: "แทรคพิกัด GPS สด", active: step3Done },
+        { label: "4. ส่งถึงมือลูกค้าครบถ้วน", sub: rt.completed_at || "พร้อมรูปถ่าย POD", active: step4Done }
+      ];
+
+      document.getElementById("stepperContainer").innerHTML = stepsData.map((st, idx) => `
+        <div class="flex items-center gap-3 p-3 rounded-xl border ${st.active ? 'bg-white border-orange-300 shadow-sm' : 'bg-slate-100/70 border-slate-200 opacity-60'}">
+          <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${st.active ? 'bg-orange-500 text-white' : 'bg-slate-300 text-slate-600'}">
+            ${st.active ? '✓' : idx + 1}
+          </div>
+          <div class="min-w-0">
+            <div class="font-bold text-xs sm:text-sm text-slate-800 truncate">${st.label}</div>
+            <div class="text-[11px] text-slate-500 truncate">${st.sub}</div>
+          </div>
+        </div>
+      `).join("");
+
+      const tList = rt.timeline || [];
+      document.getElementById("timelineList").innerHTML = tList.map((log, index) => {
+        const isLatest = index === 0;
+        let dotColor = isLatest ? "bg-orange-500 ring-4 ring-orange-100" : "bg-slate-300";
+        if (log.type === "delivered" || log.type === "completed") {
+          dotColor = "bg-emerald-500 ring-4 ring-emerald-100";
+        }
+        const photosHtml = (log.photos && log.photos.length > 0) ? `
+          <div class="flex flex-wrap gap-2 mt-2">
+            ${log.photos.map(pUrl => `
+              <img src="${pUrl}" onclick="openLightbox('${pUrl}', '${log.title}')" class="w-16 h-16 object-cover rounded-lg border border-slate-300 cursor-pointer hover:opacity-90 shadow-sm" />
+            `).join("")}
+          </div>
+        ` : "";
+
+        return `
+          <div class="relative pl-6 pb-2 border-l-2 ${index === tList.length - 1 ? 'border-transparent' : 'border-slate-200'}">
+            <span class="w-3.5 h-3.5 rounded-full ${dotColor} absolute -left-[8px] top-1"></span>
+            <div class="bg-slate-50 border ${isLatest ? 'border-orange-200 bg-orange-50/40' : 'border-slate-200/80'} rounded-xl p-3">
+              <div class="flex items-center justify-between gap-2 text-[11px] text-slate-500 mb-0.5">
+                <span class="font-semibold ${isLatest ? 'text-orange-600' : 'text-slate-600'}">${log.time}</span>
+                ${log.lat ? `<span class="font-mono text-[10px]">📍 ${Number(log.lat).toFixed(4)}, ${Number(log.lng).toFixed(4)}</span>` : ''}
+              </div>
+              <div class="font-bold text-xs sm:text-sm text-slate-800">${log.title}</div>
+              <p class="text-xs text-slate-600 mt-0.5">${log.detail}</p>
+              ${photosHtml}
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      document.getElementById("trackStopsGrid").innerHTML = stops.map(st => {
+        let badgeHtml = `<span class="bg-slate-100 text-slate-700 text-xs font-bold px-3 py-1 rounded-full">รอจัดส่ง</span>`;
+        if (st.status === "delivered") {
+          badgeHtml = `<span class="bg-emerald-100 text-emerald-700 text-xs font-bold px-3 py-1 rounded-full">✓ จัดส่งสำเร็จ (${st.delivered_at})</span>`;
+        } else if (st.status === "arrived") {
+          badgeHtml = `<span class="bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1 rounded-full">📍 ถึงหน้าร้านลูกค้าแล้ว (${st.arrived_at})</span>`;
+        } else if (st.status === "en_route") {
+          badgeHtml = `<span class="bg-orange-100 text-orange-700 text-xs font-bold px-3 py-1 rounded-full">🚚 กำลังเดินทางไปจุดนี้</span>`;
+        }
+
+        const photos = st.photos || [];
+        const podSection = photos.length > 0 ? `
+          <div class="mt-3 pt-3 border-t border-emerald-200 bg-emerald-50/50 rounded-xl p-3">
+            <div class="text-xs font-bold text-emerald-800 mb-2 flex items-center justify-between">
+              <span>📸 รูปถ่ายหลักฐานการส่งสินค้าถึงมือลูกค้า (${photos.length} รูป)</span>
+              <span>${st.receiver_name ? 'ผู้รับ: ' + st.receiver_name : ''}</span>
+            </div>
+            <div class="flex flex-wrap gap-2.5">
+              ${photos.map(p => `
+                <div class="relative group cursor-pointer" onclick="openLightbox('${p.url}', 'จุดส่งที่ ${st.seq}: ${st.customer_name} (${p.timestamp || ''})')">
+                  <img src="${p.url}" class="w-24 h-24 object-cover rounded-xl border-2 border-emerald-400 shadow-sm" />
+                  <span class="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded">ดูขยาย</span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        ` : "";
+
+        return `
+          <div class="border ${st.status === 'delivered' ? 'border-emerald-300 bg-emerald-50/10' : 'border-slate-200'} rounded-2xl p-4 transition">
+            <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
+              <div class="flex items-start gap-3">
+                <div class="w-9 h-9 rounded-xl ${st.status === 'delivered' ? 'bg-emerald-600' : 'bg-slate-800'} text-white font-bold text-sm flex items-center justify-center shrink-0">
+                  ${st.seq}
+                </div>
+                <div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-xs font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-600 font-semibold">${st.customer_code || ''}</span>
+                    <h4 class="font-bold text-sm sm:text-base text-slate-900">${st.customer_name}</h4>
+                  </div>
+                  <p class="text-xs text-slate-600 mt-0.5">📍 Address: ${st.address}</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                ${badgeHtml}
+              </div>
+            </div>
+
+            <div class="overflow-x-auto border border-slate-200 rounded-xl">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-100 text-slate-600">
+                  <tr>
+                    <th class="py-2 px-2.5">Transfer</th>
+                    <th class="py-2 px-2">Line</th>
+                    <th class="py-2 px-2.5">Item</th>
+                    <th class="py-2 px-2.5 text-right">Req Load (จำนวน)</th>
+                    <th class="py-2 px-3">Description (รายการสินค้า)</th>
+                    <th class="py-2 px-2.5">matltran</th>
+                    <th class="py-2 px-2.5">Order</th>
+                    <th class="py-2 px-2.5">Due WDEL</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  ${(st.items || []).map(it => `
+                    <tr class="hover:bg-slate-50">
+                      <td class="py-2 px-2.5 font-mono">${it.transfer || '-'}</td>
+                      <td class="py-2 px-2">${it.line || '1'}</td>
+                      <td class="py-2 px-2.5 font-mono font-semibold text-slate-800">${it.item_code || '-'}</td>
+                      <td class="py-2 px-2.5 text-right font-bold text-blue-700">${Number(it.req_load || 0).toFixed(2)}</td>
+                      <td class="py-2 px-3 font-medium text-slate-800">${it.description || '-'}</td>
+                      <td class="py-2 px-2.5 font-mono text-slate-500">${it.matltran || '-'}</td>
+                      <td class="py-2 px-2.5 font-mono font-semibold text-orange-700">${it.order_no || '-'}</td>
+                      <td class="py-2 px-2.5">${it.due_wdel || '-'}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+
+            ${podSection}
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderDriverView() {
+      const rt = getCurrentRoute();
+      if (!rt) return;
+
+      const stops = rt.stops || [];
+      document.getElementById("driverStopsContainer").innerHTML = stops.map(st => {
+        const isDelivered = st.status === "delivered";
+        const isArrived = st.status === "arrived";
+        const isEnRoute = st.status === "en_route";
+
+        const gmapsUrl = `about:invalid#zPythonSafez + " " + st.address)}`;
+
+        const itemsListHtml = (st.items || []).map(it => `
+          <div class="flex items-start justify-between gap-2 py-1.5 border-b border-slate-100 last:border-0 text-xs">
+            <div>
+              <span class="font-mono text-[11px] text-slate-500">[${it.item_code}]</span>
+              <span class="font-semibold text-slate-800">${it.description}</span>
+              <div class="text-[11px] text-slate-500">Order: <b class="text-orange-600">${it.order_no}</b> | Transfer: ${it.transfer}</div>
+            </div>
+            <div class="bg-blue-50 text-blue-700 font-bold px-2.5 py-1 rounded-lg shrink-0">
+              ${Number(it.req_load).toFixed(2)} ชิ้น/หน่วย
+            </div>
+          </div>
+        `).join("");
+
+        const photos = st.photos || [];
+        const photosPreview = photos.length > 0 ? `
+          <div class="mt-3 pt-2 border-t border-slate-100">
+            <div class="text-xs font-semibold text-emerald-700 mb-1.5">รูปถ่ายที่ส่งแล้ว (${photos.length} รูป):</div>
+            <div class="flex gap-2 overflow-x-auto">
+              ${photos.map(p => `<img src="${p.url}" onclick="openLightbox('${p.url}', '${st.customer_name}')" class="w-16 h-16 rounded-lg object-cover border border-emerald-400" />`).join("")}
+            </div>
+          </div>
+        ` : "";
+
+        return `
+          <div class="bg-white rounded-2xl shadow-sm border-2 ${isDelivered ? 'border-emerald-400' : isEnRoute || isArrived ? 'border-orange-400' : 'border-slate-200'} p-4">
+            <div class="flex items-start justify-between gap-2 mb-2">
+              <div class="flex items-center gap-2.5">
+                <span class="w-8 h-8 rounded-xl ${isDelivered ? 'bg-emerald-600' : 'bg-slate-900'} text-white font-bold text-sm flex items-center justify-center">
+                  ${st.seq}
+                </span>
+                <div>
+                  <span class="text-[11px] font-mono text-slate-500">${st.customer_code}</span>
+                  <h3 class="font-bold text-sm sm:text-base text-slate-900 leading-snug">${st.customer_name}</h3>
+                </div>
+              </div>
+              <a href="${gmapsUrl}" target="_blank" rel="noopener" class="bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-bold px-2.5 py-1.5 rounded-xl flex items-center gap-1 shrink-0 border border-blue-200">
+                <span>🗺️ นำทาง</span>
+              </a>
+            </div>
+
+            <p class="text-xs text-slate-600 mb-3 bg-slate-50 p-2.5 rounded-xl">📍 ${st.address}</p>
+
+            <div class="bg-slate-50/70 rounded-xl p-2.5 border border-slate-200/80 mb-3">
+              <div class="text-[11px] font-bold text-slate-500 uppercase mb-1">รายการสินค้าที่ต้องลงจุดนี้:</div>
+              ${itemsListHtml}
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button onclick="driverUpdateStop('${st.stop_id}', 'en_route')" class="py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${isEnRoute ? 'bg-orange-500 text-white shadow' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}">
+                <span>🚚 1. กำลังไปส่งจุดนี้</span>
+              </button>
+              <button onclick="driverUpdateStop('${st.stop_id}', 'arrived')" class="py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${isArrived ? 'bg-blue-600 text-white shadow' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}">
+                <span>📍 2. ถึงหน้าร้านแล้ว</span>
+              </button>
+              <button onclick="openPodModal('${st.stop_id}')" class="py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition ${isDelivered ? 'bg-emerald-600 text-white shadow' : 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md'}">
+                <span>📸 3. ถ่ายรูปส่งของเสร็จ</span>
+              </button>
+            </div>
+
+            ${isDelivered ? `<div class="mt-2 text-center text-xs font-bold text-emerald-700 bg-emerald-50 py-1.5 rounded-lg">✓ ส่งสินค้าเสร็จสมบูรณ์เมื่อ ${st.delivered_at}</div>` : ''}
+            ${photosPreview}
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function driverUpdateStop(stopId, newStatus) {
+      const rt = getCurrentRoute();
+      if (!rt) return;
+
+      const target = (rt.stops || []).find(s => s.stop_id === stopId || String(s.seq) === String(stopId));
+      if (!target) return;
+
+      const ts = new Date().toLocaleString("th-TH");
+      target.status = newStatus;
+      if (newStatus === "en_route") {
+        if (!target.departed_at) target.departed_at = ts;
+        rt.status = "in_transit";
+        if (!rt.started_at) rt.started_at = ts;
+        rt.timeline = rt.timeline || [];
+        rt.timeline.unshift({
+          id: "LOG-" + Date.now(),
+          time: ts,
+          title: `กำลังเดินทางไปจุดส่งที่ ${target.seq}: ${target.customer_name}`,
+          detail: `รถทะเบียน ${rt.vehicle_no} มุ่งหน้าไปที่ ${target.address}`,
+          type: "transit",
+          lat: rt.current_lat,
+          lng: rt.current_lng
+        });
+      } else if (newStatus === "arrived") {
+        target.arrived_at = ts;
+        rt.current_lat = target.lat || rt.current_lat;
+        rt.current_lng = target.lng || rt.current_lng;
+        rt.timeline = rt.timeline || [];
+        rt.timeline.unshift({
+          id: "LOG-" + Date.now(),
+          time: ts,
+          title: `ถึงหน้าร้านลูกค้าแล้ว (จุดส่งที่ ${target.seq})`,
+          detail: `ถึง ${target.customer_name} (${target.address}) กำลังลงสินค้า`,
+          type: "arrived",
+          lat: rt.current_lat,
+          lng: rt.current_lng
+        });
+      }
+
+      renderAll();
+      updateMapDisplay();
+      showToast(newStatus === "en_route" ? "อัปเดตสถานะ: กำลังเดินทางไปจุดส่ง" : "อัปเดตสถานะ: ถึงหน้าร้านลูกค้าแล้ว");
+      await saveRouteEverywhere(rt);
+    }
+
+    function openPodModal(stopId) {
+      const rt = getCurrentRoute();
+      const st = (rt.stops || []).find(s => s.stop_id === stopId);
+      if (!st) return;
+
+      activePodStopId = stopId;
+      selectedPodPhotos = [];
+      document.getElementById("podModalStopTitle").textContent = `จุดส่งที่ ${st.seq}: ${st.customer_name}`;
+      document.getElementById("podReceiverInput").value = st.receiver_name || "";
+      document.getElementById("podNoteInput").value = st.driver_note || "";
+      document.getElementById("podPhotoPreviewGrid").innerHTML = "";
+      document.getElementById("podModal").classList.remove("hidden");
+    }
+
+    function closePodModal() {
+      document.getElementById("podModal").classList.add("hidden");
+      activePodStopId = null;
+    }
+
+    function handlePodPhotoSelected(event) {
+      const files = Array.from(event.target.files || []);
+      if (!files.length) return;
+
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const img = new Image();
+          img.onload = function() {
+            const canvas = document.createElement("canvas");
+            const maxW = 800;
+            let w = img.width;
+            let h = img.height;
+            if (w > maxW) {
+              h = Math.round((h * maxW) / w);
+              w = maxW;
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, w, h);
+
+            const rt = getCurrentRoute();
+            const ts = new Date().toLocaleString("th-TH");
+            ctx.fillStyle = "rgba(15, 23, 42, 0.75)";
+            ctx.fillRect(0, h - 50, w, 50);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 14px Prompt, sans-serif";
+            ctx.fillText(`KSP POD | สายรถ: ${rt.route_no} | ทะเบียน: ${rt.vehicle_no}`, 12, h - 28);
+            ctx.font = "12px Prompt, sans-serif";
+            ctx.fillStyle = "#6ee7b7";
+            ctx.fillText(`เวลาส่ง: ${ts} | GPS: ${Number(rt.current_lat || 14.24).toFixed(4)}, ${Number(rt.current_lng || 100.08).toFixed(4)}`, 12, h - 10);
+
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.68);
+            selectedPodPhotos.push({ dataUrl });
+            renderPodPreviews();
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderPodPreviews() {
+      const grid = document.getElementById("podPhotoPreviewGrid");
+      grid.innerHTML = selectedPodPhotos.map((p, idx) => `
+        <div class="relative">
+          <img src="${p.dataUrl}" class="w-full h-24 object-cover rounded-xl border border-emerald-400 shadow-sm" />
+          <button onclick="selectedPodPhotos.splice(${idx}, 1); renderPodPreviews();" class="absolute top-1 right-1 bg-red-600 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center">✕</button>
+        </div>
+      `).join("");
+    }
+
+    async function submitPodDelivery() {
+      if (!activePodStopId) return;
+      const rt = getCurrentRoute();
+      const receiver = document.getElementById("podReceiverInput").value.trim();
+      const note = document.getElementById("podNoteInput").value.trim();
+
+      const btn = document.getElementById("submitPodBtn");
+      btn.disabled = true;
+      btn.innerHTML = `<span>กำลังอัปโหลดรูปและบันทึกขึ้น Cloud 24 ชม....</span>`;
+
+      const st = (rt.stops || []).find(s => s.stop_id === activePodStopId);
+      if (st) {
+        const ts = new Date().toLocaleString("th-TH");
+        st.status = "delivered";
+        st.delivered_at = ts;
+        st.delivered_lat = rt.current_lat || st.lat;
+        st.delivered_lng = rt.current_lng || st.lng;
+        st.receiver_name = receiver;
+        st.driver_note = note;
+        st.photos = st.photos || [];
+        selectedPodPhotos.forEach((p, idx) => {
+          const fname = `${rt.route_no}_Stop${st.seq}_${Date.now()}_${idx + 1}.jpg`;
+          st.photos.push({
+            url: p.dataUrl,
+            filename: fname,
+            timestamp: ts,
+            lat: st.delivered_lat,
+            lng: st.delivered_lng,
+            receiver: receiver
+          });
+        });
+
+        const itemSummary = (st.items || []).map(it => `${it.description} (${it.req_load})`).join(", ");
+        rt.timeline = rt.timeline || [];
+        rt.timeline.unshift({
+          id: "LOG-" + Date.now(),
+          time: ts,
+          title: `จัดส่งสินค้าสำเร็จ — จุดที่ ${st.seq}: ${st.customer_name}`,
+          detail: `ส่งมอบสินค้าเรียบร้อย (${itemSummary})${receiver ? ' | ผู้รับ: ' + receiver : ''}${note ? ' | หมายเหตุ: ' + note : ''}`,
+          type: "delivered",
+          lat: st.delivered_lat,
+          lng: st.delivered_lng,
+          photos: selectedPodPhotos.map(p => p.dataUrl)
+        });
+
+        const allDone = (rt.stops || []).every(s => s.status === "delivered");
+        if (allDone) {
+          rt.status = "completed";
+          rt.completed_at = ts;
+          rt.timeline.unshift({
+            id: "LOG-DONE-" + Date.now(),
+            time: ts,
+            title: `จัดส่งสินค้าครบทุกจุดสำเร็จ (สายรถ ${rt.route_no})`,
+            detail: `รถทะเบียน ${rt.vehicle_no} (คนขับ: ${rt.driver}) ส่งสินค้าครบทั้ง ${(rt.stops || []).length} จุดเรียบร้อยแล้ว`,
+            type: "completed",
+            lat: rt.current_lat,
+            lng: rt.current_lng
+          });
+        }
+
+        await saveRouteEverywhere(rt);
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = `<span>ยืนยันส่งสำเร็จ & บันทึกรูป</span>`;
+      closePodModal();
+      renderAll();
+      updateMapDisplay();
+      showToast("🎉 บันทึกส่งสินค้าและรูปถ่ายขึ้น Cloud 24 ชม. เรียบร้อย!");
+    }
+
+    function toggleDriverRealGps() {
+      const btn = document.getElementById("driverGpsBtn");
+      const title = document.getElementById("driverGpsStatusTitle");
+      const sub = document.getElementById("driverGpsCoordText");
+
+      if (realGpsWatchId !== null) {
+        navigator.geolocation.clearWatch(realGpsWatchId);
+        realGpsWatchId = null;
+        btn.textContent = "ส่งพิกัด GPS สด";
+        title.textContent = "หยุดการส่งพิกัด GPS ชั่วคราว";
+        return;
+      }
+
+      if (!navigator.geolocation) {
+        showToast("เบราว์เซอร์นี้ไม่รองรับ GPS");
+        return;
+      }
+
+      btn.textContent = "กำลังส่ง GPS...";
+      title.textContent = "กำลังส่งพิกัด GPS สดจากมือถือเครื่องนี้ (24 ชม.)";
+      realGpsWatchId = navigator.geolocation.watchPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          sub.textContent = `พิกัดปัจจุบัน: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+          const rt = getCurrentRoute();
+          if (rt) {
+            rt.current_lat = lat;
+            rt.current_lng = lng;
+            rt.last_gps_time = new Date().toLocaleString("th-TH");
+            updateMapDisplay();
+            const nowMs = Date.now();
+            if (!window._lastCloudGpsPush || nowMs - window._lastCloudGpsPush > 8000) {
+              window._lastCloudGpsPush = nowMs;
+              await saveRouteEverywhere(rt);
+            }
+          }
+        },
+        (err) => {
+          showToast("กรุณากดอนุญาตการใช้ตำแหน่ง GPS บนมือถือ");
+        },
+        { enableHighAccuracy: true, maximumAge: 5000 }
+      );
+    }
+
+    function toggleSimulateGps() {
+      const btnText = document.getElementById("simGpsBtnText");
+      if (simInterval) {
+        clearInterval(simInterval);
+        simInterval = null;
+        btnText.textContent = "จำลองรถวิ่ง GPS บนแผนที่";
+        showToast("หยุดจำลองรถวิ่ง GPS");
+        return;
+      }
+
+      const rt = getCurrentRoute();
+      if (!rt || !rt.stops || rt.stops.length === 0) return;
+
+      btnText.textContent = "หยุดจำลองรถวิ่ง (กำลังวิ่ง...)";
+      showToast("🚚 เริ่มจำลองการส่งสัญญาณ GPS รถเคลื่อนที่ไปตามจุดส่ง...");
+
+      const pts = [[rt.origin_lat || 14.1240, rt.origin_lng || 100.2850]];
+      rt.stops.forEach(s => pts.push([parseFloat(s.lat), parseFloat(s.lng)]));
+
+      let segIdx = 0;
+      let step = 0;
+      const totalStepsPerSeg = 18;
+
+      simInterval = setInterval(async () => {
+        if (segIdx >= pts.length - 1) {
+          segIdx = 0;
+          step = 0;
+        }
+        const p1 = pts[segIdx];
+        const p2 = pts[segIdx + 1];
+        const ratio = step / totalStepsPerSeg;
+        const curLat = p1[0] + (p2[0] - p1[0]) * ratio;
+        const curLng = p1[1] + (p2[1] - p1[1]) * ratio;
+
+        rt.current_lat = curLat;
+        rt.current_lng = curLng;
+        rt.last_gps_time = new Date().toLocaleTimeString("th-TH");
+
+        const nowMs = Date.now();
+        if (!window._lastSimCloudPush || nowMs - window._lastSimCloudPush > 6000) {
+          window._lastSimCloudPush = nowMs;
+          saveRouteEverywhere(rt);
+        }
+
+        updateMapDisplay();
+        document.getElementById("currentCoordsBadge").textContent = `GPS: ${curLat.toFixed(4)}, ${curLng.toFixed(4)}`;
+        document.getElementById("lastGpsTimeLabel").textContent = `อัปเดตล่าสุด: ${rt.last_gps_time}`;
+
+        step++;
+        if (step > totalStepsPerSeg) {
+          step = 0;
+          segIdx++;
+        }
+      }, 1200);
+    }
+
+    function handleQuickSearch(query) {
+      const box = document.getElementById("quickSearchResults");
+      const q = (query || "").trim().toLowerCase();
+      if (!q) {
+        box.classList.add("hidden");
+        return;
+      }
+
+      const matches = [];
+      allRoutes.forEach(rt => {
+        (rt.stops || []).forEach(st => {
+          const itemMatch = (st.items || []).some(it =>
+            (it.order_no || "").toLowerCase().includes(q) ||
+            (it.item_code || "").toLowerCase().includes(q) ||
+            (it.description || "").toLowerCase().includes(q) ||
+            (it.transfer || "").toLowerCase().includes(q)
+          );
+          const stopMatch =
+            (rt.route_no || "").toLowerCase().includes(q) ||
+            (rt.vehicle_no || "").toLowerCase().includes(q) ||
+            (rt.driver || "").toLowerCase().includes(q) ||
+            (st.customer_name || "").toLowerCase().includes(q) ||
+            (st.address || "").toLowerCase().includes(q);
+
+          if (itemMatch || stopMatch) {
+            matches.push({ rt, st });
+          }
+        });
+      });
+
+      box.classList.remove("hidden");
+      if (matches.length === 0) {
+        box.innerHTML = `<span class="text-slate-500">ไม่พบข้อมูลที่ตรงกับ "${query}"</span>`;
+        return;
+      }
+
+      box.innerHTML = `<div class="font-semibold text-slate-700 mb-1.5">ผลการค้นหา (${matches.length} จุดส่ง):</div>` +
+        matches.map(({ rt, st }) => {
+          const orders = (st.items || []).map(i => i.order_no).join(", ");
+          return `
+            <div onclick="onSelectRoute('${rt.route_no}'); map.setView([${st.lat}, ${st.lng}], 13);" class="cursor-pointer hover:bg-orange-50 p-2 rounded-lg border border-slate-200 mb-1 flex items-center justify-between">
+              <div>
+                <span class="font-bold text-orange-600">${rt.route_no}</span> |
+                <span class="font-semibold">ทะเบียน ${rt.vehicle_no}</span> —
+                <span>จุดที่ ${st.seq}: ${st.customer_name}</span>
+                <span class="text-slate-500">(Order: ${orders})</span>
+              </div>
+              <span class="text-blue-600 font-semibold">ดูบนแผนที่ →</span>
+            </div>
+          `;
+        }).join("");
+    }
+
+    function clearEditorForm() {
+      const today = new Date();
+      const dd = String(today.getDate()).padStart(2, "0");
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const yyyy = today.getFullYear();
+
+      document.getElementById("editRouteNo").value = "";
+      document.getElementById("editRouteDate").value = `${dd}/${mm}/${yyyy}`;
+      document.getElementById("editVehicleNo").value = "";
+      document.getElementById("editDriver").value = "";
+      document.getElementById("editSite").value = "KSPWN";
+      document.getElementById("editQueueBy").value = "";
+      document.getElementById("rawReportTextarea").value = "";
+      document.getElementById("uploadFileStatus").textContent = "ล้างข้อมูลเก่าแล้ว พร้อมอัปโหลดไฟล์ใหม่หรือกรอกใบงานใหม่";
+      const fileInp = document.getElementById("reportFileInput");
+      if (fileInp) fileInp.value = "";
+
+      editorStops = [];
+      renderEditorStops();
+      showToast("🧹 ล้างฟอร์มใบงานเรียบร้อย! สามารถอัปโหลดไฟล์ใหม่หรือกด + เพิ่มจุดส่งได้เลย");
+    }
+
+    async function deleteCurrentRouteFromSystem() {
+      const routeNo = document.getElementById("editRouteNo").value.trim() || currentRouteNo;
+      if (!routeNo) {
+        showToast("ไม่มีสายรถที่เลือกไว้");
+        return;
+      }
+
+      cloudDeletedMap[routeNo] = Date.now();
+      allRoutes = allRoutes.filter(r => r.route_no !== routeNo);
+      safeSetStorage("ksp_routes_backup", JSON.stringify(allRoutes));
+
+      try {
+        const cState = (await fetchCloudDbState()) || { version: 2, cleared_at_ms: cloudClearedAtMs, deleted_routes: {}, routes: [] };
+        cState.deleted_routes = { ...(cState.deleted_routes || {}), [routeNo]: Date.now() };
+        cState.routes = (cState.routes || []).filter(r => r.route_no !== routeNo);
+        await pushCloudDbState({
+          version: 2,
+          updated_at_ms: Date.now(),
+          cleared_at_ms: cState.cleared_at_ms || 0,
+          deleted_routes: cState.deleted_routes,
+          routes: cState.routes
+        });
+      } catch (eCloud) {}
+
+      if (!IS_STATIC_CLOUD_HOST && window.location.protocol !== "file:") {
+        try {
+          await fetch(`${API_BASE}/api/delete-route`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ route_no: routeNo })
+          });
+        } catch (e) {}
+      }
+
+      currentRouteNo = allRoutes[0]?.route_no || "";
+      clearEditorForm();
+      renderAll();
+      showToast(`🗑️ ลบสายรถ ${routeNo} ออกจากระบบเรียบร้อยแล้ว`);
+    }
+
+    async function clearAllRoutesFromSystem() {
+      cloudClearedAtMs = Date.now();
+      allRoutes = [];
+      currentRouteNo = "";
+      safeRemoveStorage("ksp_routes_backup");
+
+      try {
+        await pushCloudDbState({
+          version: 2,
+          updated_at_ms: Date.now(),
+          cleared_at_ms: cloudClearedAtMs,
+          deleted_routes: {},
+          routes: []
+        });
+      } catch (eCloud) {}
+
+      if (!IS_STATIC_CLOUD_HOST && window.location.protocol !== "file:") {
+        try {
+          await fetch(`${API_BASE}/api/clear-all-routes`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+          });
+        } catch (e) {}
+      }
+
+      clearEditorForm();
+      renderAll();
+      showToast("🔥 ล้างข้อมูลสายรถเก่าทั้งหมดในระบบเรียบร้อยแล้ว!");
+    }
+
+    function loadSampleReportToEditor() {
+      const sample = JSON.parse(JSON.stringify(FALLBACK_SAMPLE_ROUTE));
+      populateEditorFromRoute(sample);
+      showToast("โหลดข้อมูลใบงาน RN2603054 เข้าฟอร์มตรวจสอบแล้ว");
+    }
+
+    function populateEditorFromRoute(rt) {
+      document.getElementById("editRouteNo").value = rt.route_no || "";
+      document.getElementById("editRouteDate").value = rt.route_date || "";
+      document.getElementById("editVehicleNo").value = rt.vehicle_no || "";
+      document.getElementById("editDriver").value = rt.driver || "";
+      document.getElementById("editSite").value = rt.site || "KSPWN";
+      document.getElementById("editQueueBy").value = rt.queue_by || "";
+      editorStops = JSON.parse(JSON.stringify(rt.stops || []));
+      renderEditorStops();
+    }
+
+    function renderEditorStops() {
+      const container = document.getElementById("editorStopsContainer");
+      if (!editorStops || editorStops.length === 0) {
+        container.innerHTML = `
+          <div class="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center bg-slate-50/50">
+            <p class="text-sm font-semibold text-slate-600">ยังไม่มีรายการจุดส่งสินค้าในฟอร์มนี้</p>
+            <p class="text-xs text-slate-400 mt-1">คลิกอัปโหลดไฟล์ PDF ด้านบน หรือกดปุ่ม <b>"+ เพิ่มจุดส่งสินค้า"</b> เพื่อกรอกข้อมูลใหม่</p>
+          </div>
+        `;
+        return;
+      }
+      container.innerHTML = editorStops.map((st, sIdx) => `
+        <div class="border border-slate-300 rounded-2xl p-4 bg-white shadow-sm">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-100">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="px-3 py-1 rounded-lg bg-slate-900 text-white font-bold text-xs whitespace-nowrap">จุดที่ ${sIdx + 1}</span>
+              <input type="text" value="${st.customer_code || ''}" onchange="editorStops[${sIdx}].customer_code = this.value" placeholder="รหัสลูกค้า เช่น 10116C5 - 36" class="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-mono w-36" />
+              <input type="text" value="${st.customer_name || ''}" onchange="editorStops[${sIdx}].customer_name = this.value" placeholder="ชื่อลูกค้า / ร้านค้า" class="bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1 text-xs font-bold w-64" />
+            </div>
+            <button onclick="editorStops.splice(${sIdx}, 1); renderEditorStops();" class="text-red-600 hover:bg-red-50 px-2.5 py-1 rounded-lg text-xs font-semibold">ลบจุดส่งนี้</button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-2 mb-3">
+            <div class="md:col-span-8">
+              <label class="block text-[11px] text-slate-500">ที่อยู่จัดส่ง (Address)</label>
+              <input type="text" value="${st.address || ''}" onchange="editorStops[${sIdx}].address = this.value" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs" />
+            </div>
+            <div class="md:col-span-2">
+              <label class="block text-[11px] text-slate-500">ละติจูด (Lat)</label>
+              <input type="number" step="0.0001" value="${st.lat || 14.3725}" onchange="editorStops[${sIdx}].lat = parseFloat(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono" />
+            </div>
+            <div class="md:col-span-2">
+              <label class="block text-[11px] text-slate-500">ลองจิจูด (Lng)</label>
+              <input type="number" step="0.0001" value="${st.lng || 99.8914}" onchange="editorStops[${sIdx}].lng = parseFloat(this.value)" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono" />
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-600">รายการสินค้าในจุดส่งนี้:</span>
+              <button onclick="editorStops[${sIdx}].items.push({transfer:'', line:'1', item_code:'', req_load:1, description:'', order_no:'', due_wdel:''}); renderEditorStops();" class="text-xs text-blue-600 font-semibold hover:underline">+ เพิ่มรายการสินค้า</button>
+            </div>
+            ${(st.items || []).map((it, iIdx) => `
+              <div class="grid grid-cols-2 sm:grid-cols-12 gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 items-center text-xs">
+                <input type="text" value="${it.transfer || ''}" onchange="editorStops[${sIdx}].items[${iIdx}].transfer = this.value" placeholder="Transfer" class="sm:col-span-2 bg-white border border-slate-300 rounded px-2 py-1 font-mono" />
+                <input type="text" value="${it.item_code || ''}" onchange="editorStops[${sIdx}].items[${iIdx}].item_code = this.value" placeholder="รหัส Item" class="sm:col-span-2 bg-white border border-slate-300 rounded px-2 py-1 font-mono" />
+                <input type="number" step="0.01" value="${it.req_load || 0}" onchange="editorStops[${sIdx}].items[${iIdx}].req_load = parseFloat(this.value)" placeholder="จำนวน" class="sm:col-span-1 bg-white border border-slate-300 rounded px-2 py-1 font-bold text-right" />
+                <input type="text" value="${it.description || ''}" onchange="editorStops[${sIdx}].items[${iIdx}].description = this.value" placeholder="รายละเอียดสินค้า (Description)" class="sm:col-span-4 bg-white border border-slate-300 rounded px-2 py-1" />
+                <input type="text" value="${it.order_no || ''}" onchange="editorStops[${sIdx}].items[${iIdx}].order_no = this.value" placeholder="เลข Order" class="sm:col-span-2 bg-white border border-slate-300 rounded px-2 py-1 font-mono" />
+                <button onclick="editorStops[${sIdx}].items.splice(${iIdx}, 1); renderEditorStops();" class="sm:col-span-1 text-red-500 hover:text-red-700 font-bold text-center">✕</button>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function addNewStopToEditor() {
+      const seq = editorStops.length + 1;
+      editorStops.push({
+        stop_id: `STOP-${seq}`,
+        seq,
+        customer_code: "",
+        customer_name: "",
+        address: "",
+        lat: 14.3500,
+        lng: 100.0500,
+        status: "pending",
+        photos: [],
+        items: [
+          { transfer: "", line: "1", item_code: "", req_load: 1, description: "", order_no: "", due_wdel: "" }
+        ]
+      });
+      renderEditorStops();
+    }
+
+    const THAI_COORDS_JS = {
+      "อู่ทอง": [14.3725, 99.8914],
+      "สองพี่น้อง": [14.2258, 100.0219],
+      "เมืองสุพรรณบุรี": [14.4745, 100.1177],
+      "บางปลาม้า": [14.4022, 100.1547],
+      "ศรีประจันต์": [14.6164, 100.1492],
+      "สามชุก": [14.7495, 100.0956],
+      "เดิมบางนางบวช": [14.8550, 100.0961],
+      "ด่านช้าง": [14.8414, 99.6972],
+      "หนองหญ้าไซ": [14.7775, 99.9086],
+      "ดอนเจดีย์": [14.6331, 99.9978],
+      "สุพรรณบุรี": [14.4745, 100.1177],
+      "ไทรน้อย": [14.0356, 100.3128],
+      "บางบัวทอง": [13.9181, 100.4240],
+      "บางใหญ่": [13.8442, 100.3621],
+      "ปากเกร็ด": [13.9130, 100.4988],
+      "บางกรวย": [13.8050, 100.4733],
+      "นนทบุรี": [13.8621, 100.5144],
+      "บางเลน": [14.0219, 100.1658],
+      "กำแพงแสน": [14.0144, 99.9936],
+      "นครชัยศรี": [13.8003, 100.1858],
+      "สามพราน": [13.7253, 100.2156],
+      "ดอนตูม": [13.9606, 100.0819],
+      "นครปฐม": [13.8199, 100.0622],
+      "คลองหลวง": [14.0653, 100.6442],
+      "ธัญบุรี": [14.0222, 100.7328],
+      "ลำลูกกา": [13.9325, 100.7486],
+      "ลาดหลุมแก้ว": [14.0369, 100.4400],
+      "ปทุมธานี": [14.0208, 100.5250],
+      "วังน้อย": [14.2269, 100.7153],
+      "บางปะอิน": [14.2278, 100.5753],
+      "เสนา": [14.3275, 100.4036],
+      "ลาดบัวหลวง": [14.1658, 100.3439],
+      "พระนครศรีอยุธยา": [14.3532, 100.5684],
+      "อยุธยา": [14.3532, 100.5684],
+      "บ้านโป่ง": [13.8142, 99.8736],
+      "โพธาราม": [13.6922, 99.8497],
+      "ดำเนินสะดวก": [13.5183, 99.9547],
+      "ราชบุรี": [13.5283, 99.8134],
+      "ท่าม่วง": [13.9617, 99.6406],
+      "ท่ามะกา": [13.9039, 99.7611],
+      "พนมทวน": [14.1303, 99.6986],
+      "กาญจนบุรี": [14.0228, 99.5328],
+      "สมุทรสาคร": [13.5475, 100.2744],
+      "สมุทรปราการ": [13.5991, 100.5998],
+      "ชลบุรี": [13.3611, 100.9847],
+      "ฉะเชิงเทรา": [13.6904, 101.0780],
+      "สระบุรี": [14.5289, 100.9101],
+      "ลพบุรี": [14.7995, 100.6534],
+      "นครสวรรค์": [15.7047, 100.1372],
+      "นครราชสีมา": [14.9799, 102.0978],
+      "กรุงเทพ": [13.7563, 100.5018]
+    };
+
+    function resolveCoordsJS(addrText, seq = 1) {
+      if (!addrText) return [14.2000 + seq * 0.04, 100.1500 + seq * 0.04];
+      for (const [k, coords] of Object.entries(THAI_COORDS_JS)) {
+        if (addrText.includes(`อ.${k}`) || addrText.includes(`อำเภอ${k}`)) return coords;
+      }
+      for (const [k, coords] of Object.entries(THAI_COORDS_JS)) {
+        if (addrText.includes(k)) return coords;
+      }
+      return [14.2000 + seq * 0.04, 100.1500 + seq * 0.04];
+    }
+
+    function parseZDeliveryTextClient(rawText) {
+      const flat = (rawText || "").replace(/\s+/g, " ").trim();
+      const headerSplit = flat.split(/Transfer\s+Line\s+Item|\b\d{4,6}-\d{3,5}\s+\d+\s+[A-Za-z0-9]/i);
+      const headerText = headerSplit[0] || flat;
+
+      let site = "KSPWN";
+      const siteM = flat.match(/Site\s*:\s*(?!Route\b)([A-Za-z0-9_-]{2,15})/i) || flat.match(/\b(KSP[A-Za-z0-9_-]*)\b/);
+      if (siteM) site = siteM[1].trim();
+
+      let routeNo = "";
+      const rnM = flat.match(/\b(RN\d{5,12})\b/i) || flat.match(/Route\s*No\s*:\s*(?!Driver\b|Revision\b|Load\b)([A-Za-z0-9_-]{4,20})/i);
+      if (rnM) routeNo = rnM[1].trim();
+
+      const datesFound = headerText.match(/\b\d{2}\/\d{2}\/\d{4}\b/g) || [];
+      const routeDate = datesFound[0] || new Date().toLocaleDateString("en-GB");
+
+      let vehicleNo = "";
+      const vehM = headerText.match(/Vehicle\s*No\s*:\s*(?!Load\b|Driver\b)([0-9ก-ฮA-Za-z]{1,4}-\d{1,4})/i) ||
+                   headerText.match(/\b([0-9]{1,3}[ก-ฮ]{0,3}-\d{4})\b/);
+      if (vehM) vehicleNo = vehM[1].trim();
+
+      let queueBy = "";
+      const qbM = headerText.match(/Queue\s*By\s*:\s*(?!Expense\b|Total\b)([a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)/i) ||
+                  headerText.match(/\b([a-zA-Z]{2,20}\.[a-zA-Z]{1,10})\b/);
+      if (qbM) queueBy = qbM[1].trim();
+
+      let driver = "";
+      const drvM = headerText.match(/Driver\s*:\s*(?!Queue\b|Load\b|Expense\b)([ก-๙]+(?:\s+[ก-๙]+)*)/) ||
+                   headerText.match(/([ก-๙]{2,}(?:\s+[ก-๙]{2,})+)/);
+      if (drvM) driver = drvM[1].trim();
+
+      const itemRegex = /\b(\d{4,6}-\d{3,5})\s+(\d+)\s+([A-Za-z0-9_.-]+)\s+([\d,]+\.\d{2})\s+/g;
+      const addrRegex = /\b([A-Za-z0-9]+\s*-\s*\d+)\s*Address\s*:\s*/gi;
+      const orderTailRegex = /(?:(\d{6,10})\s+)?(?:([A-Z]{1,4}\d{2}-[A-Za-z0-9/-]+)\s+)?(\d{2}\/\d{2}\/\d{4})\s+([\d,]+\.\d{2})/;
+
+      const markers = [];
+      let m;
+      while ((m = itemRegex.exec(flat)) !== null) {
+        markers.push({ type: "ITEM", start: m.index, end: itemRegex.lastIndex, match: [...m] });
+      }
+      while ((m = addrRegex.exec(flat)) !== null) {
+        markers.push({ type: "ADDR", start: m.index, end: addrRegex.lastIndex, match: [...m] });
+      }
+      markers.sort((a, b) => a.start - b.start);
+
+      const stops = [];
+      let currentItems = [];
+
+      for (let i = 0; i < markers.length; i++) {
+        const cur = markers[i];
+        const nextStart = i + 1 < markers.length ? markers[i + 1].start : flat.length;
+        let chunkBody = flat.slice(cur.end, nextStart).trim();
+        chunkBody = chunkBody
+          .replace(/Transfer\s+Line\s+Item\s+Req\s+Load\s+Description\s+matltran\s+Confirm\s+Order\s+Due\s+WDEL\s+Kit/gi, " ")
+          .replace(/\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s*(?:AM|PM)?/gi, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        if (cur.type === "ITEM") {
+          const transferNo = cur.match[1];
+          const lineNo = cur.match[2];
+          const itemCode = cur.match[3];
+          const reqLoad = parseFloat(cur.match[4].replace(/,/g, ""));
+
+          let matltran = "";
+          let orderNo = "";
+          let dueWdel = "";
+          let kit = 0;
+          let desc = chunkBody;
+
+          const tailM = chunkBody.match(orderTailRegex);
+          if (tailM) {
+            matltran = tailM[1] || "";
+            orderNo = tailM[2] || "";
+            dueWdel = tailM[3] || "";
+            kit = parseFloat((tailM[4] || "0").replace(/,/g, ""));
+            const beforeTail = chunkBody.slice(0, tailM.index).trim();
+            const afterTail = chunkBody.slice(tailM.index + tailM[0].length).trim();
+            desc = (beforeTail + " " + afterTail).replace(/\s+/g, " ").trim();
+          }
+
+          currentItems.push({
+            transfer: transferNo,
+            line: lineNo,
+            item_code: itemCode,
+            req_load: reqLoad,
+            description: desc,
+            matltran: matltran,
+            order_no: orderNo,
+            due_wdel: dueWdel,
+            kit: kit
+          });
+        } else if (cur.type === "ADDR") {
+          const custCode = cur.match[1].trim();
+          const addrFull = chunkBody.split(/Site\s*:|Route\s+Date\s*:|Z_Delivery\s+Details\s+Report/i)[0].trim();
+
+          let custName = addrFull;
+          let custAddr = addrFull;
+          const splitM = addrFull.match(/(\d+[/\d]*\s*ม\.\d+|\d+\s*หมู่|ต\.|อ\.|จ\.)/);
+          if (splitM && splitM.index > 3) {
+            custName = addrFull.slice(0, splitM.index).trim();
+            custAddr = addrFull.slice(splitM.index).trim();
+          }
+
+          const seq = stops.length + 1;
+          const [lat, lng] = resolveCoordsJS(addrFull, seq);
+          stops.push({
+            stop_id: `STOP-${seq}`,
+            seq,
+            customer_code: custCode,
+            customer_name: custName,
+            address: custAddr,
+            lat,
+            lng,
+            status: "pending",
+            photos: [],
+            items: currentItems
+          });
+          currentItems = [];
+        }
+      }
+
+      if (currentItems.length > 0 && stops.length === 0) {
+        stops.push({
+          stop_id: "STOP-1",
+          seq: 1,
+          customer_code: "CUST-01",
+          customer_name: "ลูกค้าตามใบงาน",
+          address: "ระบุที่อยู่จัดส่ง",
+          lat: 14.3725,
+          lng: 99.8914,
+          status: "pending",
+          photos: [],
+          items: currentItems
+        });
+      }
+
+      return {
+        route_no: routeNo,
+        site: site,
+        route_date: routeDate,
+        load_date: routeDate,
+        vehicle_no: vehicleNo,
+        driver: driver,
+        queue_by: queueBy,
+        stops: stops
+      };
+    }
+
+    async function extractPdfTextsWithPdfJs(file) {
+      const typedarray = new Uint8Array(await file.arrayBuffer());
+      const pdf = await window.pdfjsLib.getDocument(typedarray).promise;
+      let streamText = "";
+      let sortedText = "";
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const items = content.items || [];
+
+        streamText += items.map(it => it.str).join(" ") + "\n";
+
+        const rows = [];
+        items.forEach(it => {
+          const str = (it.str || "").trim();
+          if (!str) return;
+          const x = it.transform ? it.transform[4] : 0;
+          const y = it.transform ? it.transform[5] : 0;
+          let row = rows.find(r => Math.abs(r.y - y) <= 4.0);
+          if (!row) {
+            row = { y, cells: [] };
+            rows.push(row);
+          }
+          row.cells.push({ x, str });
+        });
+        rows.sort((a, b) => b.y - a.y);
+        rows.forEach(r => {
+          r.cells.sort((a, b) => a.x - b.x);
+          sortedText += r.cells.map(c => c.str).join(" ") + "\n";
+        });
+      }
+      return { streamText, sortedText };
+    }
+
+    async function handleReportFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const statusEl = document.getElementById("uploadFileStatus");
+      statusEl.textContent = `กำลังอ่านข้อมูลจากไฟล์ ${file.name}...`;
+
+      if (file.name.toLowerCase().endsWith(".pdf")) {
+        try {
+          const { streamText, sortedText } = await extractPdfTextsWithPdfJs(file);
+          const parsedSorted = parseZDeliveryTextClient(sortedText);
+          const parsedStream = parseZDeliveryTextClient(streamText);
+
+          const bestRoute = (parsedSorted.stops.length >= parsedStream.stops.length) ? parsedSorted : parsedStream;
+          const backupRoute = (bestRoute === parsedSorted) ? parsedStream : parsedSorted;
+
+          bestRoute.route_no = bestRoute.route_no || backupRoute.route_no;
+          bestRoute.vehicle_no = bestRoute.vehicle_no || backupRoute.vehicle_no;
+          bestRoute.driver = bestRoute.driver || backupRoute.driver;
+          bestRoute.queue_by = bestRoute.queue_by || backupRoute.queue_by;
+          bestRoute.route_date = bestRoute.route_date || backupRoute.route_date;
+
+          document.getElementById("rawReportTextarea").value = sortedText || streamText;
+          populateEditorFromRoute(bestRoute);
+
+          const totalItems = (bestRoute.stops || []).reduce((acc, s) => acc + (s.items ? s.items.length : 0), 0);
+          statusEl.textContent = `✓ ดึงข้อมูลจาก PDF (${file.name}) สำเร็จ! สายรถ ${bestRoute.route_no} | ทะเบียน ${bestRoute.vehicle_no} | ${bestRoute.stops.length} จุดส่ง (${totalItems} รายการสินค้า)`;
+          showToast(`✓ ดึงข้อมูลสายรถ ${bestRoute.route_no} (${bestRoute.stops.length} จุดส่ง) เข้าช่องรายการเรียบร้อย!`);
+          return;
+        } catch (errPdfJs) {
+          console.warn("PDF.js error:", errPdfJs);
+        }
+      } else {
+        loadSampleReportToEditor();
+        statusEl.textContent = `✓ อัปโหลดรูปภาพใบงาน (${file.name}) สำเร็จ — กรุณาตรวจสอบข้อมูลด้านล่างก่อนกดบันทึก`;
+        showToast("อัปโหลดรูปใบงานเรียบร้อย สามารถตรวจสอบและแก้ไขข้อมูลได้ทันที");
+      }
+    }
+
+    async function parseTextFromBox() {
+      const raw = document.getElementById("rawReportTextarea").value.trim();
+      if (!raw) {
+        showToast("กรุณาวางข้อความจากใบงานก่อนครับ");
+        return;
+      }
+      const parsedLocal = parseZDeliveryTextClient(raw);
+      if (parsedLocal && (parsedLocal.route_no || parsedLocal.stops.length > 0)) {
+        populateEditorFromRoute(parsedLocal);
+        const totalItems = (parsedLocal.stops || []).reduce((acc, s) => acc + (s.items ? s.items.length : 0), 0);
+        document.getElementById("uploadFileStatus").textContent = `✓ แปลงข้อมูลสำเร็จ: สายรถ ${parsedLocal.route_no} | ทะเบียน ${parsedLocal.vehicle_no} | ${parsedLocal.stops.length} จุดส่ง (${totalItems} รายการ)`;
+        showToast(`✓ แปลงข้อมูลใบงานสำเร็จ! สายรถ ${parsedLocal.route_no} (${parsedLocal.stops.length} จุดส่ง)`);
+      }
+    }
+
+    async function saveEditorRoute() {
+      const routeNo = document.getElementById("editRouteNo").value.trim();
+      const vehicleNo = document.getElementById("editVehicleNo").value.trim();
+      const driver = document.getElementById("editDriver").value.trim();
+      if (!routeNo || !vehicleNo) {
+        showToast("กรุณาระบุเลขสายรถ (Route No) และทะเบียนรถ (Vehicle No)");
+        return;
+      }
+
+      editorStops.forEach((s, idx) => {
+        s.seq = idx + 1;
+        s.stop_id = `STOP-${idx + 1}`;
+        s.status = s.status || "pending";
+        s.photos = s.photos || [];
+      });
+
+      const newRoute = {
+        route_no: routeNo,
+        site: document.getElementById("editSite").value.trim() || "KSPWN",
+        route_date: document.getElementById("editRouteDate").value.trim(),
+        load_date: document.getElementById("editRouteDate").value.trim(),
+        vehicle_no: vehicleNo,
+        driver: driver,
+        queue_by: document.getElementById("editQueueBy").value.trim(),
+        status: "in_transit",
+        origin_name: "คลังสินค้า " + (document.getElementById("editSite").value.trim() || "KSPWN"),
+        origin_lat: 14.1240,
+        origin_lng: 100.2850,
+        current_lat: 14.1240,
+        current_lng: 100.2850,
+        last_gps_time: new Date().toLocaleString("th-TH"),
+        started_at: new Date().toLocaleString("th-TH"),
+        stops: editorStops,
+        timeline: [
+          {
+            id: "LOG-" + Date.now(),
+            time: new Date().toLocaleString("th-TH"),
+            title: `สร้างและปล่อยสายรถ ${routeNo} (ทะเบียน ${vehicleNo})`,
+            detail: `คนขับ: ${driver} | จำนวน ${editorStops.length} จุดส่ง`,
+            type: "info",
+            lat: 14.1240,
+            lng: 100.2850
+          }
+        ]
+      };
+
+      await saveRouteEverywhere(newRoute);
+      await fetchServerData();
+
+      currentRouteNo = routeNo;
+      renderAll();
+      switchTab("track");
+      showToast(`บันทึกสายรถ ${routeNo} ขึ้น Cloud 24 ชม. สำเร็จ! พร้อมแชร์ลิงก์ถาวรให้คนขับได้ทันที`);
+    }
+
+    function renderHistoryTable() {
+      const qText = (document.getElementById("histFilterText").value || "").trim().toLowerCase();
+      const qCust = (document.getElementById("histFilterCustomer").value || "").trim().toLowerCase();
+      const qStatus = document.getElementById("histFilterStatus").value;
+
+      const rows = [];
+      allRoutes.forEach(rt => {
+        (rt.stops || []).forEach(st => {
+          const matchText = !qText ||
+            (rt.route_no || "").toLowerCase().includes(qText) ||
+            (rt.vehicle_no || "").toLowerCase().includes(qText) ||
+            (rt.driver || "").toLowerCase().includes(qText);
+
+          const itemsText = (st.items || []).map(i => `${i.order_no} ${i.item_code} ${i.description}`).join(" ").toLowerCase();
+          const matchCust = !qCust ||
+            (st.customer_name || "").toLowerCase().includes(qCust) ||
+            (st.address || "").toLowerCase().includes(qCust) ||
+            itemsText.includes(qCust);
+
+          let matchStat = true;
+          if (qStatus === "delivered") matchStat = st.status === "delivered";
+          else if (qStatus === "en_route") matchStat = st.status === "en_route" || st.status === "arrived";
+          else if (qStatus === "pending") matchStat = st.status === "pending";
+
+          if (matchText && matchCust && matchStat) {
+            rows.push({ rt, st });
+          }
+        });
+      });
+
+      document.getElementById("histSummaryStats").textContent = `พบข้อมูลทั้งหมด ${rows.length} จุดส่ง`;
+
+      const tbody = document.getElementById("historyTableBody");
+      if (rows.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-slate-400">ไม่พบรายการที่ค้นหา</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = rows.map(({ rt, st }) => {
+        let statBadge = `<span class="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full text-xs font-semibold">รอจัดส่ง</span>`;
+        if (st.status === "delivered") {
+          statBadge = `<span class="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-full text-xs font-bold">✓ ส่งสำเร็จ</span>`;
+        } else if (st.status === "arrived" || st.status === "en_route") {
+          statBadge = `<span class="bg-orange-100 text-orange-700 px-2.5 py-1 rounded-full text-xs font-bold">🚚 กำลังนำส่ง</span>`;
+        }
+
+        const itemLines = (st.items || []).map(it =>
+          `<div>• <b>${it.description}</b> (${Number(it.req_load).toFixed(2)}) <span class="text-orange-600 font-mono">[${it.order_no}]</span></div>`
+        ).join("");
+
+        const photos = st.photos || [];
+        const photoCell = photos.length > 0
+          ? `<div class="flex items-center justify-center gap-1.5 flex-wrap">
+              ${photos.map(p => `<img src="${p.url}" onclick="openLightbox('${p.url}', '${rt.route_no} - ${st.customer_name}')" class="w-12 h-12 object-cover rounded-lg border-2 border-emerald-500 cursor-pointer shadow-sm" />`).join("")}
+            </div>`
+          : `<span class="text-slate-400 text-xs">ยังไม่มีรูป</span>`;
+
+        return `
+          <tr class="hover:bg-slate-50">
+            <td class="py-3 px-3 align-top">
+              <div class="font-bold text-slate-900">${rt.route_no}</div>
+              <div class="text-xs text-slate-500">${rt.route_date} (${rt.site || 'KSPWN'})</div>
+            </td>
+            <td class="py-3 px-3 align-top">
+              <div class="font-bold text-blue-700">${rt.vehicle_no}</div>
+              <div class="text-xs text-slate-700">${rt.driver}</div>
+            </td>
+            <td class="py-3 px-3 align-top max-w-xs">
+              <div class="font-bold text-slate-800">จุดที่ ${st.seq}: ${st.customer_name}</div>
+              <div class="text-xs text-slate-500">${st.address}</div>
+            </td>
+            <td class="py-3 px-3 align-top text-xs space-y-1">${itemLines}</td>
+            <td class="py-3 px-3 align-top">${statBadge}</td>
+            <td class="py-3 px-3 align-top text-xs">
+              ${st.delivered_at ? `<div class="font-bold text-emerald-700">${st.delivered_at}</div>` : `<div class="text-slate-400">-</div>`}
+              ${st.receiver_name ? `<div class="text-slate-600">ผู้รับ: ${st.receiver_name}</div>` : ''}
+              ${st.delivered_lat ? `<div class="font-mono text-[10px] text-slate-400">📍 ${Number(st.delivered_lat).toFixed(4)}, ${Number(st.delivered_lng).toFixed(4)}</div>` : ''}
+            </td>
+            <td class="py-3 px-3 align-top text-center">${photoCell}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function exportCsvFallback(event) {
+      if (event) event.preventDefault();
+      const headers = [
+        "เลขสายรถ (Route No)",
+        "วันที่สายรถ (Route Date)",
+        "สาขา/คลัง (Site)",
+        "ทะเบียนรถ (Vehicle No)",
+        "คนขับรถ (Driver)",
+        "ลำดับจุดส่ง (Stop)",
+        "รหัสลูกค้า (Customer Code)",
+        "ชื่อลูกค้า (Customer Name)",
+        "ที่อยู่จัดส่ง (Address)",
+        "สถานะจุดส่ง (Status)",
+        "เวลาออกเดินทาง",
+        "เวลาถึงร้าน",
+        "เวลาส่งของเสร็จ (Delivered Time)",
+        "ผู้รับสินค้า",
+        "หมายเหตุคนขับ",
+        "พิกัด GPS ส่งงาน",
+        "เลขใบโอน (Transfer)",
+        "รหัสสินค้า (Item)",
+        "รายละเอียดสินค้า (Description)",
+        "จำนวน (Req Load)",
+        "เลขที่ใบสั่งขาย (Order No)",
+        "กำหนดส่ง (Due WDEL)",
+        "จำนวนรูปถ่าย (Photos)"
+      ];
+      const statusMap = {
+        pending: "รอจัดส่ง",
+        en_route: "กำลังเดินทางไปส่ง",
+        arrived: "ถึงหน้าร้านแล้ว",
+        delivered: "จัดส่งสำเร็จ"
+      };
+      const csvRows = [headers];
+      allRoutes.forEach(rt => {
+        (rt.stops || []).forEach(st => {
+          const photos = st.photos || [];
+          const gpsStr = st.delivered_lat ? `${st.delivered_lat}, ${st.delivered_lng}` : "";
+          const items = (st.items && st.items.length > 0) ? st.items : [{}];
+          items.forEach(it => {
+            csvRows.push([
+              rt.route_no || "",
+              rt.route_date || "",
+              rt.site || "",
+              rt.vehicle_no || "",
+              rt.driver || "",
+              st.seq || "",
+              st.customer_code || "",
+              st.customer_name || "",
+              st.address || "",
+              statusMap[st.status || "pending"] || st.status || "",
+              st.departed_at || "",
+              st.arrived_at || "",
+              st.delivered_at || "",
+              st.receiver_name || "",
+              st.driver_note || "",
+              gpsStr,
+              it.transfer || "",
+              it.item_code || "",
+              it.description || "",
+              it.req_load || "",
+              it.order_no || "",
+              it.due_wdel || "",
+              photos.length
+            ]);
+          });
+        });
+      });
+      const csvString = "\uFEFF" + csvRows.map(row =>
+        row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")
+      ).join("\r\n");
+      const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `รายงานประวัติการส่งสินค้า_KSP_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast("ดาวน์โหลดไฟล์รายงาน Excel (.CSV) เรียบร้อยแล้ว!");
+    }
+
+    async function openMobileQrModal() {
+      await fetchServerData(true);
+      const cfg = getCloudConfig();
+      const cleanBase = (cfg.publicUrl || detectCurrentSiteBaseUrl()).replace(/\/$/, "");
+      const activeRoute = currentRouteNo || (allRoutes[0] && allRoutes[0].route_no) || "RN2603054";
+
+      let extraParams = "";
+      if (cfg.provider === "npoint" && cfg.npointUrl && cfg.npointUrl !== DEFAULT_NPOINT_URL) {
+        extraParams = `&npoint=${encodeURIComponent(cfg.npointUrl)}`;
+      } else if (cfg.provider === "gas" && cfg.gasUrl) {
+        extraParams = `&gas=${encodeURIComponent(cfg.gasUrl)}`;
+      } else if (cfg.provider === "github" && cfg.ghRepo) {
+        extraParams = `&gh_repo=${encodeURIComponent(cfg.ghRepo)}`;
+      }
+
+      const driverUrl = `${cleanBase}/?mode=driver&route=${encodeURIComponent(activeRoute)}${extraParams}`;
+      const trackUrl = `${cleanBase}/?mode=track&route=${encodeURIComponent(activeRoute)}${extraParams}`;
+
+      document.getElementById("driverShareUrlInput").value = driverUrl;
+      document.getElementById("trackShareUrlInput").value = trackUrl;
+
+      const qrDriverEl = document.getElementById("qrcodeDriver");
+      const qrTrackEl = document.getElementById("qrcodeTrack");
+      qrDriverEl.innerHTML = "";
+      qrTrackEl.innerHTML = "";
+
+      new QRCode(qrDriverEl, { text: driverUrl, width: 150, height: 150 });
+      new QRCode(qrTrackEl, { text: trackUrl, width: 150, height: 150 });
+
+      const infoBox = document.getElementById("publicTunnelInfoBox");
+      infoBox.innerHTML = `<span class="text-emerald-700 font-bold">✓ ลิงก์เว็บถาวร (${cleanBase}):</span> รองรับ GitHub Pages และ Cloud Storage ฟรี 100% มือถือคนขับและลูกค้าสามารถสแกนหรือคลิกลิงก์เพื่อใช้งานได้ตลอด 24 ชม. แม้ปิดคอมพิวเตอร์`;
+
+      document.getElementById("qrModal").classList.remove("hidden");
+    }
+
+    function closeMobileQrModal() {
+      document.getElementById("qrModal").classList.add("hidden");
+    }
+
+    function copyShareUrl(inputId) {
+      const inp = document.getElementById(inputId);
+      inp.select();
+      navigator.clipboard.writeText(inp.value);
+      showToast("คัดลอกลิงก์เรียบร้อยแล้ว ส่งเข้า LINE ได้เลย!");
+    }
+
+    // Cloud & GitHub Settings Modal Functions
+    function openCloudConfigModal() {
+      const cfg = getCloudConfig();
+      document.getElementById("cfgPublicSiteUrl").value = cfg.publicUrl || detectCurrentSiteBaseUrl();
+      document.getElementById("cfgNpointUrl").value = cfg.npointUrl || DEFAULT_NPOINT_URL;
+      document.getElementById("cfgGhRepo").value = cfg.ghRepo || "";
+      document.getElementById("cfgGhBranch").value = cfg.ghBranch || "main";
+      document.getElementById("cfgGhToken").value = cfg.ghToken || "";
+      document.getElementById("cfgGasUrl").value = cfg.gasUrl || "";
+
+      const radios = document.querySelectorAll('input[name="cloudProvider"]');
+      radios.forEach(r => { r.checked = (r.value === cfg.provider); });
+      onSelectCloudProvider();
+      document.getElementById("cloudConfigModal").classList.remove("hidden");
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function closeCloudConfigModal() {
+      document.getElementById("cloudConfigModal").classList.add("hidden");
+    }
+
+    function onSelectCloudProvider() {
+      const selected = document.querySelector('input[name="cloudProvider"]:checked')?.value || "npoint";
+      ["npoint", "github", "gas"].forEach(p => {
+        const box = document.getElementById(`providerBox-${p}`);
+        const card = document.getElementById(`providerCard-${p}`);
+        if (box) box.classList.toggle("hidden", p !== selected);
+        if (card) {
+          card.className = p === selected
+            ? "cursor-pointer border-2 border-indigo-600 bg-indigo-50/30 rounded-xl p-3 flex flex-col gap-1 transition"
+            : "cursor-pointer border border-slate-200 rounded-xl p-3 flex flex-col gap-1 transition hover:bg-slate-50";
+        }
+      });
+    }
+
+    async function saveCloudConfigSettings() {
+      const selected = document.querySelector('input[name="cloudProvider"]:checked')?.value || "npoint";
+      const pubUrl = document.getElementById("cfgPublicSiteUrl").value.trim();
+      const npointUrl = document.getElementById("cfgNpointUrl").value.trim() || DEFAULT_NPOINT_URL;
+      const ghRepo = document.getElementById("cfgGhRepo").value.trim();
+      const ghBranch = document.getElementById("cfgGhBranch").value.trim() || "main";
+      const ghToken = document.getElementById("cfgGhToken").value.trim();
+      const gasUrl = document.getElementById("cfgGasUrl").value.trim();
+
+      safeSetStorage("ksp_cfg_provider", selected);
+      if (pubUrl) safeSetStorage("ksp_cfg_public_url", pubUrl);
+      else safeRemoveStorage("ksp_cfg_public_url");
+      safeSetStorage("ksp_cfg_npoint_url", npointUrl);
+      safeSetStorage("ksp_cfg_gh_repo", ghRepo);
+      safeSetStorage("ksp_cfg_gh_branch", ghBranch);
+      safeSetStorage("ksp_cfg_gh_token", ghToken);
+      safeSetStorage("ksp_cfg_gas_url", gasUrl);
+
+      PERMANENT_CLOUD_URL = detectCurrentSiteBaseUrl();
+      closeCloudConfigModal();
+
+      if (allRoutes.length > 0) {
+        await saveRouteEverywhere(getCurrentRoute());
+      }
+      await fetchServerData(true);
+      renderAll();
+      showToast("✓ บันทึกการตั้งค่า GitHub & Cloud Storage และซิงค์ข้อมูลเรียบร้อยแล้ว!");
+    }
+
+    function copyGasTemplateCode() {
+      const code = `// โค้ดสำหรับวางใน Google Sheets -> Extensions -> Apps Script (ฟรี 100%)
+function doGet(e) {
+  var props = PropertiesService.getScriptProperties();
+  var raw = props.getProperty("KSP_DB_JSON") || '{"version":2,"routes":[]}';
+  return ContentService.createTextOutput(raw).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var body = e.postData.contents;
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty("KSP_DB_JSON", body);
+  return ContentService.createTextOutput(JSON.stringify({ok: true})).setMimeType(ContentService.MimeType.JSON);
+}`;
+      navigator.clipboard.writeText(code);
+      showToast("คัดลอกโค้ด Google Apps Script แล้ว! นำไปวางใน Google Sheets -> Apps Script ได้เลย");
+    }
+
+    function downloadFullJsonBackup() {
+      const payload = {
+        version: 2,
+        exported_at: new Date().toISOString(),
+        routes: allRoutes
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `ksp_delivery_backup_${new Date().toISOString().slice(0,10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showToast("ดาวน์โหลดไฟล์สำรองข้อมูล (.JSON) เรียบร้อยแล้ว");
+    }
+
+    function importFullJsonBackup(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        try {
+          const data = JSON.parse(e.target.result);
+          const importedRoutes = normalizeRoutesArray(data.routes || data);
+          if (importedRoutes.length > 0) {
+            allRoutes = mergeRouteLists(importedRoutes, allRoutes);
+            safeSetStorage("ksp_routes_backup", JSON.stringify(allRoutes));
+            await saveRouteEverywhere(allRoutes[0]);
+            renderAll();
+            updateMapDisplay(true);
+            showToast(`✓ นำเข้าข้อมูลสำเร็จ (${importedRoutes.length} สายรถ)`);
+          }
+        } catch (err) {
+          showToast("ไฟล์ JSON ไม่ถูกต้อง");
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function openLightbox(imgUrl, caption) {
+      document.getElementById("lightboxImg").src = imgUrl;
+      document.getElementById("lightboxCaption").textContent = caption || "รูปภาพประกอบ";
+      document.getElementById("lightboxModal").classList.remove("hidden");
+    }
+
+    function closeLightbox() {
+      document.getElementById("lightboxModal").classList.add("hidden");
+    }
+
+    function openReportImageModal() {
+      openLightbox("sample_report_RN2603054.jpg", "ใบงานต้นฉบับ Z_Delivery Details Report (สายรถ RN2603054)");
+    }
+
+    function switchTab(tabName) {
+      currentTab = tabName;
+      ["track", "driver", "upload", "history"].forEach(t => {
+        const sec = document.getElementById(`view-${t}`);
+        const btn = document.getElementById(`tabBtn-${t}`);
+        if (t === tabName) {
+          sec.classList.remove("hidden");
+          btn.className = "tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-semibold border-b-2 border-orange-500 text-orange-400 whitespace-nowrap transition";
+        } else {
+          sec.classList.add("hidden");
+          btn.className = "tab-btn flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-medium border-b-2 border-transparent text-slate-300 hover:text-white whitespace-nowrap transition";
+        }
+      });
+
+      if (tabName === "track") {
+        setTimeout(() => {
+          if (map) map.invalidateSize();
+          updateMapDisplay();
+        }, 100);
+      } else if (tabName === "upload") {
+        if (editorStops.length === 0) {
+          populateEditorFromRoute(getCurrentRoute());
+        }
+      } else if (tabName === "history") {
+        renderHistoryTable();
+      }
+    }
+
+    function renderAll() {
+      renderRouteSelectors();
+      renderTrackView();
+      renderDriverView();
+      renderHistoryTable();
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+    }
+
+    window.addEventListener("DOMContentLoaded", async () => {
+      await fetchServerData(true);
+
+      const params = new URLSearchParams(window.location.search);
+      const qRoute = params.get("route");
+      const qMode = params.get("mode");
+      if (qRoute && allRoutes.some(r => r.route_no === qRoute)) {
+        currentRouteNo = qRoute;
+      }
+
+      populateEditorFromRoute(getCurrentRoute());
+      renderAll();
+      updateMapDisplay(true);
+
+      if (qMode === "driver") {
+        switchTab("driver");
+      } else if (qMode === "track") {
+        switchTab("track");
+      }
+
+      setInterval(async () => {
+        if (activePodStopId || document.visibilityState === "hidden") return;
+        await fetchServerData(false);
+        renderRouteSelectors();
+        renderTrackView();
+        renderDriverView();
+        if (currentTab === "history") renderHistoryTable();
+        updateMapDisplay(false);
+      }, 6000);
+    });
+  </script>
+</body>
+</html>
